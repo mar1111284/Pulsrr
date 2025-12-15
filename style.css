@@ -1,0 +1,302 @@
+.window-frame { 
+    box-shadow: none; 
+    margin: 0; 
+}
+
+#btn-play, #btn-pause {
+    border: none;
+    color: #33FF33;
+    font-size: 14px;
+    background: transparent;
+}
+
+
+/* Container / bar itself */
+#export-progress {
+    border-radius: 2px;
+    font-size: 14px;
+    color: #33FF33;
+}
+
+/* Background (empty part) */
+#export-progress > trough {
+    background-color: #0d0d0d;
+    border: 1px solid #33FF33;
+    border-radius: 2px;
+    min-height: 21px;
+}
+
+/* Filled part */
+#export-progress > trough > progress {
+    background: #33FF33;
+
+}
+
+progressbar#export-progress progress {
+    background-color: #33FF33;
+    border: none;
+    min-height: 21px;
+}
+
+
+/* Optional: progress text centered */
+#export-progress text {
+    color: #33FF33;
+}
+
+#modal-layer {
+    background-color: rgba(0, 0, 0, 0.8);
+}
+
+window decoration { 
+    margin: 0; 
+    padding: 60px; 
+    border: none; 
+}
+
+/* Closed combobox (button area) */
+combobox {
+    background-color: #0d0d0d;
+    color: #33FF33;
+    border: 1px solid #33FF33;
+    border-radius: 2px;
+    font-size: 14px;
+    text-shadow: none;
+}
+
+/* Text inside the combobox */
+combobox box,
+combobox entry,
+combobox cellview {
+    background-color: #0d0d0d;
+    color: #33FF33;
+    background-image: none;
+    font-size: 14px;
+    text-shadow: none;
+}
+
+/* Arrow button */
+combobox button {
+    background-color: #0d0d0d;
+    border: none;
+}
+
+/* Dropdown popup background */
+combobox > window.popup menu {
+    background: #0d0d0d;
+    border: 1px solid #33FF33;
+}
+
+/* Dropdown items */
+combobox > window.popup menuitem {
+    background-color: #0d0d0d;
+    color: #33FF33;
+    text-shadow: none;
+    margin: 4px;
+}
+/* Hovered item – subtle green tint */
+combobox > window.popup menuitem:hover {
+    background-color: #0d140d;
+}
+
+/* Semi-transparent full overlay */
+#modal-layer {
+    background-color: rgba(0, 0, 0, 0.6); /* dark transparent background */
+}
+
+/* Centered black box */
+#black-modal {
+    background-color: #0d0d0d;    /* solid black */
+    border-radius: 8px;           /* rounded corners */
+    border: 2px solid #333333;    /* optional border */
+    padding: 15px;                /* inner padding */
+}
+
+#selected-file-label {
+    border: 1px dashed #FFFFFF; /* white dashed border */
+    padding: 10px;
+    margin: 5px;
+    color: #FFFFFF; /* text color */
+    border-radius: 5px; /* optional rounded corners */
+    min-height: 30px; /* ensure enough space for the text */
+}
+
+/* Main spinbutton container */
+spinbutton {
+    border: 1px solid #33FF33;  /* terminal green border */
+    border-radius: 2px;
+    background-color: #0d0d0d;
+    padding: 0;
+    box-shadow: none;
+    text-shadow: none;
+    color: #33FF33;
+}
+
+/* The text entry inside the spinbutton */
+spinbutton > entry {
+    color: #33FF33;
+    border: none;
+    background-image: none; /* removes gradients from default theme */
+    text-shadow: none;
+    box-shadow: none;
+}
+
+/* Up and down arrow buttons */
+spinbutton button.up,
+spinbutton button.down {
+    background-color: #0d0d0d;
+    color: #33FF33;
+    text-shadow: none;
+    box-shadow: none;
+}
+
+/* Scale combo box */
+GtkComboBox {
+    background-color: #222222;
+    color: #FFFFFF;
+    border: 1px solid #555555;
+    border-radius: 5px;
+    padding: 4px;
+}
+
+/* Combo box dropdown list */
+GtkComboBoxPopup {
+    background-color: #222222;
+    color: #FFFFFF;
+}
+
+
+
+
+#main-container {
+    background-color: #0d0d0d;  /* terminal black */
+    padding: 16px;              /* inner spacing around the container */
+}
+
+
+#left-container {
+        background-color: #0d0d0d;  /* terminal-style black */
+        border: 2px solid #33FF33;  /* terminal green border */
+        border-radius: 4px;
+        margin: 6px;
+        padding: 16px;
+}
+
+#aphorism-box {
+    color: #CCCCCC; 
+    font-family: "VT323", monospace;  /* terminal-style font */
+    font-style: italic;
+    font-size: 14px;
+    letter-spacing: 2.4px;
+}
+
+#button-row {
+    padding-top: 6px;
+    padding-bottom: 6px;
+}
+
+/* Layer horizontal container */
+#layer-box {
+        border: 1px solid #33FF33;   /* terminal green border */
+        border-radius: 4px;           /* slight rounding */
+        padding: 20px;                 /* inner spacing */
+    	font-family: "VT323", monospace;  /* terminal-style font */
+}
+
+
+#preview-box{
+     /* background-color: #122512;  very dark green, almost black */
+    border: 1px solid #33FF33;  /* keep bright green border */
+    border-radius: 2px;
+}
+
+/* Layer header label */
+#layer-header {
+    color: #33FF33;     /* terminal green */
+    font-weight: bold;
+}
+
+/* Preview label */
+#preview-label {
+    color: #33FF33;     /* terminal green */
+}
+
+#right-container{
+	background-color: #0d0d0d; 
+}
+
+#render-panel {
+        background-color: #0d0d0d;   /* terminal-style black */
+        border: 2px solid #33FF33;  /* terminal green border */
+        border-radius: 4px;
+        padding: 10px;
+        margin: 6px;
+}
+
+#timeline-panel {
+        background-color: #0d0d0d;   /* terminal-style black */
+        border: 2px solid #33FF33;  /* terminal green border */
+        border-radius: 4px;
+        padding: 10px;
+        margin: 6px;
+}
+
+/* All buttons in the app */
+button {
+        background: #0d0d0d;          /* terminal-style black background */
+        border: 1px solid #33FF33;    /* terminal green border */
+        border-radius: 2px;           /* rounded corners */
+        font-size: 10px;              /* small font size */
+        box-shadow: none;
+}
+/* Text buttons: force terminal font + letter spacing */
+button.text-button {
+    letter-spacing: 2.5px;                /* slightly more spaced letters */
+    color: #33FF33;
+    box-shadow: none;  
+}
+
+button label {
+    text-shadow: none;
+}
+button:hover,
+button:focus,
+button:active {
+    box-shadow: none;
+}
+button.text-button:hover {
+    font-weight: bold;
+}
+
+
+#layer-menu-btn {
+    background: #0d0d0d;
+    color: #33FF33;
+    padding: 0;          /* remove inner padding */
+    margin: 2px;          /* remove outer margin */
+    margin-right: 12px;
+    font-size: 18px;
+}
+
+/* Load dialog background */
+#load-dialog-bg {
+    background-color: #1e1e1e;
+    border-radius: 8px;
+}
+
+/* File chooser background */
+#load-file-chooser {
+    background-color: #2a2a2a;
+    border-radius: 5px;
+}
+
+/* Scale combo box background */
+#load-scale-combo {
+    background-color: #2a2a2a;
+    border-radius: 5px;
+    color: #ffffff;
+}
+
+
+
+

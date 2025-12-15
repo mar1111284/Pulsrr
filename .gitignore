@@ -1,0 +1,22 @@
+# build artifacts
+*.o
+*.out
+*.exe
+pulsrr
+
+# media files
+*.mp4
+
+# specific source files (experiments / scratch)
+flicker_2video.*
+
+# SDL / runtime
+*.log
+
+# editor
+.vscode/
+.idea/
+*~
+
+# OS
+.DS_Store
