@@ -6,8 +6,8 @@ LIBS   = `pkg-config --libs gtk+-3.0 sdl2 SDL2_image SDL2_ttf`
 
 all: pulsrr
 
-pulsrr: main.c sdl.c sdl.h
-	$(CC) $(CFLAGS) main.c sdl.c -o pulsrr $(LIBS)
+pulsrr: main.c sdl.c utils.c sdl.h utils.h
+	$(CC) $(CFLAGS) main.c sdl.c utils.c -o pulsrr $(LIBS)
 
 clean:
 	rm -f pulsrr

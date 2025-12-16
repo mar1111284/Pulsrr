@@ -9,6 +9,12 @@ int  sdl_embed_in_gtk(GtkWidget *widget);
 void sdl_draw_frame(void);
 void sdl_free_textures(void);
 void sdl_restart(GtkWidget *widget);
+// Set the alpha transparency for a given layer (1–4)
+void set_transparency(int layer_number, int alpha);
+void set_gray(int layer_number, int gray);
+int is_layer_gray(int layer_number);
+void sdl_update_textures();
+
 
 /* --- playback control --- */
 void sdl_set_playing(int playing);

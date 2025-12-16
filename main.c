@@ -3,7 +3,7 @@
 #include <time.h>
 #include <stdio.h>
 #include "sdl.h"
-
+#include "utils.h"
 
 #define MINIMAL_WINDOW_WIDTH   1200
 #define MINIMAL_WINDOW_HEIGHT  900
@@ -34,11 +34,6 @@ GtkWidget *layer_preview_boxes[MAX_LAYERS] = { NULL };
 void on_update_render_clicked(GtkButton *button, gpointer user_data) {
     GtkWidget *render_panel = GTK_WIDGET(user_data);
     sdl_restart(render_panel);
-}
-
-
-static gboolean is_mp4_file(const char *name) {
-    return g_str_has_suffix(name, ".mp4");
 }
 
 static gboolean close_modal_cb(gpointer data) {
@@ -159,36 +154,6 @@ void on_modal_cancel_clicked(GtkButton *button, gpointer user_data) {
     sdl_set_playing(1);
     
     g_list_free(children);
-}
-
-// Drag-and-drop callback
-static void on_drag_data_received(GtkWidget *widget,
-                                  GdkDragContext *context,
-                                  gint x, gint y,
-                                  GtkSelectionData *data,
-                                  guint info, guint time,
-                                  gpointer user_data)
-{
-    GtkWidget *label = GTK_WIDGET(user_data);
-
-    if (gtk_selection_data_get_length(data) >= 0) {
-        gchar **uris = gtk_selection_data_get_uris(data);
-        for (int i = 0; uris[i] != NULL; i++) {
-            gchar *filename = g_filename_from_uri(uris[i], NULL, NULL);
-            if (filename) {
-                // Only accept .mp4 files
-                if (g_str_has_suffix(filename, ".mp4")) {
-                    gtk_label_set_text(GTK_LABEL(label), filename);
-                    g_print("Dropped MP4 file: %s\n", filename);
-                } else {
-                    g_print("Ignored non-MP4 file: %s\n", filename);
-                }
-                g_free(filename);
-            }
-        }
-        g_strfreev(uris);
-    }
-    gtk_drag_finish(context, TRUE, FALSE, time);
 }
 
 typedef struct {
@@ -446,44 +411,214 @@ void on_load_button_clicked(GtkButton *button, gpointer user_data) {
 }
 
 
-void on_fx_button_clicked(GtkButton *button, gpointer user_data) {
-    const char *layer_name = (const char *)user_data;
-    g_print("EFFECTS button clicked for layer: %s\n", layer_name);
+/* ---------------------------------------------------
+ * FX MODAL (STEP 1 – UI SKELETON)
+ * --------------------------------------------------- */
+typedef struct {
+    int layer_number;  	
+    GtkSpinButton *speed_spin;
+    GtkSpinButton *alpha_spin;
+    GtkSpinButton *threshold_spin;
+    GtkSpinButton *contrast_spin;
+    GtkToggleButton *gray_check;
+    GtkToggleButton *invert_check;
+} LayerFxWidgets;
+
+
+void on_fx_apply_clicked(GtkButton *button, gpointer user_data) {
+	LayerFxWidgets *fx = (LayerFxWidgets *)user_data;
+
+	int layer = fx->layer_number;
+	double speed = gtk_spin_button_get_value(fx->speed_spin);
+	int alpha = gtk_spin_button_get_value_as_int(fx->alpha_spin);
+	int threshold = gtk_spin_button_get_value_as_int(fx->threshold_spin);
+	double contrast = gtk_spin_button_get_value(fx->contrast_spin);
+	gboolean grayscale = gtk_toggle_button_get_active(fx->gray_check);
+	gboolean invert = gtk_toggle_button_get_active(fx->invert_check);
+
+	g_print("APPLY FX for layer %d:\n", layer);
+	g_print("  Speed: %.2f\n", speed);
+	g_print("  Alpha: %d\n", alpha);
+	g_print("  Threshold: %d\n", threshold);
+	g_print("  Contrast: %.2f\n", contrast);
+	g_print("  Grayscale: %s\n", grayscale ? "ON" : "OFF");
+	g_print("  Invert: %s\n", invert ? "ON" : "OFF");
+
+	// Apply transparency
+	set_transparency(layer, alpha);
+
+	// Apply grayscale
+	set_gray(layer, grayscale ? 1 : 0);
+
+	// TODO: handle speed, threshold, contrast, invert later
 }
+
+
+void on_fx_button_clicked(GtkButton *button, gpointer user_data) {
+	int layer_number = GPOINTER_TO_INT(user_data);
+	g_print("EFFECTS button clicked for layer %d\n", layer_number);
+
+	/* Pause rendering */
+	sdl_set_playing(0);
+
+	/* Clear modal */
+	GList *children = gtk_container_get_children(GTK_CONTAINER(global_modal_layer));
+	for (GList *iter = children; iter; iter = iter->next)
+	gtk_widget_destroy(GTK_WIDGET(iter->data));
+	g_list_free(children);
+
+	/* Black modal box */
+	GtkWidget *black_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 20);
+	gtk_widget_set_size_request(black_box, 420, 420);
+	gtk_widget_set_name(black_box, "black-modal");
+	gtk_widget_set_halign(black_box, GTK_ALIGN_CENTER);
+	gtk_widget_set_valign(black_box, GTK_ALIGN_CENTER);
+
+	/* Title */
+	GtkWidget *title = gtk_label_new("FX");
+	gtk_widget_set_name(title, "modal-title");
+	gtk_box_pack_start(GTK_BOX(black_box), title, FALSE, FALSE, 10);
+
+	/* --------------------
+	 * FX Row 1: Speed + Alpha (50% each)
+	 * -------------------- */
+	GtkWidget *fx_row1 = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+	gtk_widget_set_hexpand(fx_row1, TRUE);
+
+	/* Speed container */
+	GtkWidget *speed_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+	gtk_widget_set_hexpand(speed_box, TRUE);
+	GtkWidget *speed_label = gtk_label_new("Speed");
+	GtkWidget *speed_spin = gtk_spin_button_new_with_range(0.25, 4.0, 0.05);
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(speed_spin), 1.0);
+	gtk_box_pack_start(GTK_BOX(speed_box), speed_label, FALSE, FALSE, 5);
+	gtk_box_pack_start(GTK_BOX(speed_box), speed_spin, TRUE, TRUE, 0);
+
+	/* Alpha container */
+	GtkWidget *alpha_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+	gtk_widget_set_hexpand(alpha_box, TRUE);
+	GtkWidget *alpha_label = gtk_label_new("Alpha");
+	GtkWidget *alpha_spin = gtk_spin_button_new_with_range(0, 255, 1);
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(alpha_spin), 255);
+	gtk_box_pack_start(GTK_BOX(alpha_box), alpha_label, FALSE, FALSE, 5);
+	gtk_box_pack_start(GTK_BOX(alpha_box), alpha_spin, TRUE, TRUE, 0);
+
+	/* Pack both 50% boxes */
+	gtk_box_pack_start(GTK_BOX(fx_row1), speed_box, TRUE, TRUE, 0);
+	gtk_box_pack_start(GTK_BOX(fx_row1), alpha_box, TRUE, TRUE, 0);
+	gtk_box_pack_start(GTK_BOX(black_box), fx_row1, FALSE, FALSE, 5);
+
+	/* --------------------
+	 * FX Row 2: Threshold + Contrast
+	 * -------------------- */
+	GtkWidget *fx_row2 = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+	gtk_widget_set_hexpand(fx_row2, TRUE);
+
+	/* Threshold */
+	GtkWidget *threshold_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+	gtk_widget_set_hexpand(threshold_box, TRUE);
+	GtkWidget *threshold_label = gtk_label_new("Threshold");
+	GtkWidget *threshold_spin = gtk_spin_button_new_with_range(0, 255, 1);
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(threshold_spin), 128);
+	gtk_box_pack_start(GTK_BOX(threshold_box), threshold_label, FALSE, FALSE, 5);
+	gtk_box_pack_start(GTK_BOX(threshold_box), threshold_spin, TRUE, TRUE, 0);
+
+	/* Contrast */
+	GtkWidget *contrast_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+	gtk_widget_set_hexpand(contrast_box, TRUE);
+	GtkWidget *contrast_label = gtk_label_new("Contrast");
+	GtkWidget *contrast_spin = gtk_spin_button_new_with_range(0.2, 3.0, 0.05);
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(contrast_spin), 1.0);
+	gtk_box_pack_start(GTK_BOX(contrast_box), contrast_label, FALSE, FALSE, 5);
+	gtk_box_pack_start(GTK_BOX(contrast_box), contrast_spin, TRUE, TRUE, 0);
+
+	/* Pack both 50% boxes */
+	gtk_box_pack_start(GTK_BOX(fx_row2), threshold_box, TRUE, TRUE, 0);
+	gtk_box_pack_start(GTK_BOX(fx_row2), contrast_box, TRUE, TRUE, 0);
+	gtk_box_pack_start(GTK_BOX(black_box), fx_row2, FALSE, FALSE, 5);
+
+	/* --------------------
+	 * FX Row 3: Grayscale + Invert
+	 * -------------------- */
+	GtkWidget *fx_row3 = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+	gtk_widget_set_hexpand(fx_row3, TRUE);
+
+	/* Grayscale */
+	GtkWidget *gray_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+	gtk_widget_set_hexpand(gray_box, TRUE);
+	GtkWidget *gray_label = gtk_label_new("Gray");
+	GtkWidget *gray_check = gtk_check_button_new();
+
+	gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(gray_check), is_layer_gray(layer_number));
+	gtk_box_pack_start(GTK_BOX(gray_box), gray_label, FALSE, FALSE, 5);
+	gtk_box_pack_start(GTK_BOX(gray_box), gray_check, TRUE, TRUE, 0);
+
+	/* Invert */
+	GtkWidget *invert_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+	gtk_widget_set_hexpand(invert_box, TRUE);
+	GtkWidget *invert_label = gtk_label_new("Invert");
+	GtkWidget *invert_check = gtk_check_button_new();
+	gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(invert_check), FALSE);
+	gtk_box_pack_start(GTK_BOX(invert_box), invert_label, FALSE, FALSE, 5);
+	gtk_box_pack_start(GTK_BOX(invert_box), invert_check, TRUE, TRUE, 0);
+
+	/* Pack both 50% boxes */
+	gtk_box_pack_start(GTK_BOX(fx_row3), gray_box, TRUE, TRUE, 0);
+	gtk_box_pack_start(GTK_BOX(fx_row3), invert_box, TRUE, TRUE, 0);
+	gtk_box_pack_start(GTK_BOX(black_box), fx_row3, FALSE, FALSE, 5);
+	
+	/* Example: set min width for labels in a row */
+	gtk_widget_set_size_request(speed_label, 80, -1);      // 80px min width, height unchanged
+	gtk_widget_set_size_request(alpha_label, 80, -1);
+	gtk_widget_set_size_request(threshold_label, 80, -1);
+	gtk_widget_set_size_request(contrast_label, 80, -1);
+	gtk_widget_set_size_request(gray_label, 80, -1);
+	gtk_widget_set_size_request(invert_label, 80, -1);
+
+	/* --------------------
+	* Buttons
+	* -------------------- */
+	GtkWidget *button_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 35);
+	gtk_widget_set_size_request(button_row, 420, 50);
+
+	GtkWidget *btn_back = gtk_button_new_with_label("BACK");
+	GtkWidget *btn_apply = gtk_button_new_with_label("APPLY FX");
+
+	gtk_widget_set_size_request(btn_back, 150, 42);
+	gtk_widget_set_size_request(btn_apply, 150, 42);
+
+	gtk_box_pack_start(GTK_BOX(button_row), btn_back, TRUE, TRUE, 0);
+	gtk_box_pack_start(GTK_BOX(button_row), btn_apply, TRUE, TRUE, 0);
+	gtk_box_pack_end(GTK_BOX(black_box), button_row, FALSE, FALSE, 10);
+
+	/* Signals */
+	g_signal_connect(btn_back,
+		     "clicked",
+		     G_CALLBACK(on_modal_cancel_clicked),
+		     global_modal_layer);
+
+	LayerFxWidgets *fx_widgets = g_malloc(sizeof(LayerFxWidgets));
+	fx_widgets->layer_number = layer_number;  // pass the layer
+	fx_widgets->speed_spin = GTK_SPIN_BUTTON(speed_spin);
+	fx_widgets->alpha_spin = GTK_SPIN_BUTTON(alpha_spin);
+	fx_widgets->threshold_spin = GTK_SPIN_BUTTON(threshold_spin);
+	fx_widgets->contrast_spin = GTK_SPIN_BUTTON(contrast_spin);
+	fx_widgets->gray_check = GTK_TOGGLE_BUTTON(gray_check);
+	fx_widgets->invert_check = GTK_TOGGLE_BUTTON(invert_check);
+
+	/* Connect Apply button */
+	g_signal_connect(btn_apply, "clicked", G_CALLBACK(on_fx_apply_clicked), fx_widgets);
+
+
+	/* Show modal */
+	gtk_container_add(GTK_CONTAINER(global_modal_layer), black_box);
+	gtk_widget_show_all(global_modal_layer);
+}
+
 
 gboolean on_layer_menu_label_click(GtkWidget *widget, GdkEventButton *event, gpointer user_data) {
     g_print("open or toggle\n");
     return TRUE;  // stop further propagation
-}
-
-char* get_random_aphorism(const char *filename) {
-    FILE *file = fopen(filename, "r");
-    if (!file) return NULL;
-
-    // Count lines
-    int lines_count = 0;
-    char buffer[256];
-    while (fgets(buffer, sizeof(buffer), file)) lines_count++;
-    if (lines_count == 0) {
-        fclose(file);
-        return NULL;
-    }
-
-    // Pick random line
-    srand(time(NULL));
-    int pick = rand() % lines_count;
-
-    rewind(file);
-    for (int i = 0; i <= pick; i++) {
-        fgets(buffer, sizeof(buffer), file);
-    }
-    fclose(file);
-
-    // Remove newline
-    buffer[strcspn(buffer, "\r\n")] = 0;
-
-    // Return a dynamically allocated string
-    return g_strdup(buffer);
 }
 
 // --------------------
@@ -565,7 +700,8 @@ GtkWidget* create_layer_component(const char *label_text, int layer_number) {
 	
 	g_signal_connect(btn_load, "clicked", G_CALLBACK(on_load_button_clicked), GINT_TO_POINTER(layer_number));
 	g_signal_connect(menu_box, "button-press-event", G_CALLBACK(on_layer_menu_label_click), NULL);
-        g_signal_connect(btn_fx, "clicked", G_CALLBACK(on_fx_button_clicked), (gpointer)label_text);
+        g_signal_connect(btn_fx,"clicked",G_CALLBACK(on_fx_button_clicked),GINT_TO_POINTER(layer_number));
+
 
         return overlay;
 }
@@ -633,9 +769,6 @@ static void on_pause_clicked(GtkWidget *widget, gpointer user_data) {
         sdl_set_playing(0);
 }
 
-
-
-
 // --------------------
 // MAIN
 // --------------------
@@ -693,26 +826,30 @@ int main(int argc, char *argv[]) {
         gtk_widget_set_size_request(logo, LEFT_CONTAINER_WIDTH, LOGO_HEIGHT);
         gtk_box_pack_start(GTK_BOX(left_container), logo, FALSE, FALSE, 0);
         
-        // Aphorism
-        
-	char *aphorism = get_random_aphorism("aphorisms.txt");
-	GtkWidget *aphorism_box = gtk_event_box_new();   // container for styling
+        // APHORISM SNIPPET
+	char *aphorism = NULL;
+	AphorismErrorCode err = get_random_aphorism("aphorisms.txt", &aphorism);
+
+	// Create container
+	GtkWidget *aphorism_box = gtk_event_box_new();
 	gtk_widget_set_hexpand(aphorism_box, FALSE);
 	gtk_widget_set_vexpand(aphorism_box, FALSE);
 	gtk_widget_set_halign(aphorism_box, GTK_ALIGN_CENTER);
 
-	// width limit
+	// Width limit and CSS styling
 	gtk_widget_set_size_request(aphorism_box, 200, -1);
 	gtk_widget_set_name(aphorism_box, "aphorism-box");
 
-	// Create the label
+	// Create label
 	GtkWidget *aphorism_label;
-	if (aphorism) {
+	if (err == APHORISM_OK && aphorism) {
 	    aphorism_label = gtk_label_new(aphorism);
 	    g_free(aphorism);
 	} else {
-	    aphorism_label = gtk_label_new("");
+	    g_warning("Could not get aphorism (error code: %d)", err);
+	    aphorism_label = gtk_label_new("Loop it till it hurts.");
 	}
+
 
 	// Center text horizontally
 	gtk_label_set_xalign(GTK_LABEL(aphorism_label), 0.5);
@@ -833,10 +970,10 @@ int main(int argc, char *argv[]) {
         // LOAD CSS
         // --------------------
         GtkCssProvider *css = gtk_css_provider_new();
-        GError *err = NULL;
-        if (!gtk_css_provider_load_from_path(css, "style.css", &err)) {
-                g_printerr("Failed to load style.css: %s\n", err->message);
-                g_clear_error(&err);
+        GError *gerr = NULL;
+        if (!gtk_css_provider_load_from_path(css, "style.css", &gerr)) {
+                g_printerr("Failed to load style.css: %s\n", gerr->message);
+                g_clear_error(&gerr);
         } else {
                 gtk_style_context_add_provider_for_screen(
                         gdk_screen_get_default(),
