@@ -3,7 +3,24 @@
     margin: 0; 
 }
 
-#btn-play, #btn-pause {
+.sequence-info {
+    margin-top: 1px;
+}
+.sequence-info-title {
+    color: #33FF33;
+    font-size: 11px;
+}
+
+.sequence-info-value {
+    color: #33FF33;
+    font-size: 11px;
+    font-weight: 500;
+}
+#loop-start-bar, #loop-end-bar{
+    background-color: red;
+}
+
+#btn-play, #btn-pause, #sequence-play, #sequence-pause, #sequence-restart, #sequence-loop {
     border: none;
     color: #33FF33;
     font-size: 14px;
@@ -233,7 +250,7 @@ GtkComboBoxPopup {
         margin: 6px;
 }
 
-#timeline-panel {
+#sequencer-container {
         background-color: #0d0d0d;   /* terminal-style black */
         border: 2px solid #33FF33;  /* terminal green border */
         border-radius: 4px;
@@ -269,13 +286,20 @@ button.text-button:hover {
 }
 
 
-#layer-menu-btn {
+#layer-menu-btn{
     background: #0d0d0d;
     color: #33FF33;
     padding: 0;          /* remove inner padding */
     margin: 2px;          /* remove outer margin */
     margin-right: 12px;
     font-size: 18px;
+}
+
+#btn-export, #btn-open-export {
+    background: #0d0d0d;
+    color: #33FF33;
+    font-size: 8px;
+    padding: 4px;
 }
 
 /* Load dialog background */

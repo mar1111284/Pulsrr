@@ -7,6 +7,7 @@
 
 // SOME GLOBALS
 
+
 GtkWidget *global_modal_layer = NULL;
 GtkWidget *layer_preview_boxes[MAX_LAYERS] = { NULL };
 
@@ -155,12 +156,13 @@ static gboolean export_done_cb(gpointer data) {
     gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(job->progress_bar), 1.0);
     gtk_progress_bar_set_text(GTK_PROGRESS_BAR(job->progress_bar), "Export completed");
 
-    // Close modal after 3 seconds
-    //g_timeout_add_seconds(3, close_modal_cb, global_modal_layer);
     set_layer_modified(job->layer_number);
     
     // render play 
     sdl_set_playing(1);
+    
+    // Close modal after 3 seconds
+    //g_timeout_add_seconds(2, close_modal_cb, global_modal_layer);
 
     return G_SOURCE_REMOVE;
 }
@@ -312,7 +314,7 @@ void on_load_button_clicked(GtkButton *button, gpointer user_data) {
 	gtk_box_pack_end(GTK_BOX(black_box), button_row, FALSE, FALSE, 0);
 
 	// Cancel button
-	GtkWidget *btn_cancel = gtk_button_new_with_label("CANCEL");
+	GtkWidget *btn_cancel = gtk_button_new_with_label("BACK");
 	gtk_widget_set_name(btn_cancel, "modal-cancel-button");
 	gtk_widget_set_size_request(btn_cancel, 150, 42);
 	gtk_box_pack_start(GTK_BOX(button_row), btn_cancel, TRUE, TRUE, 0);
@@ -422,6 +424,9 @@ void on_fx_apply_clicked(GtkButton *button, gpointer user_data) {
 
 	// Apply grayscale
 	set_gray(layer, grayscale ? 1 : 0);
+	
+	// Apply playback speed
+    	set_layer_speed(layer - 1, speed);
 
 	// TODO: handle speed, threshold, contrast, invert later
 }
@@ -461,9 +466,14 @@ void on_fx_button_clicked(GtkButton *button, gpointer user_data) {
 	/* Speed container */
 	GtkWidget *speed_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
 	gtk_widget_set_hexpand(speed_box, TRUE);
+
 	GtkWidget *speed_label = gtk_label_new("Speed");
-	GtkWidget *speed_spin = gtk_spin_button_new_with_range(0.25, 4.0, 0.05);
-	gtk_spin_button_set_value(GTK_SPIN_BUTTON(speed_spin), 1.0);
+	GtkWidget *speed_spin = gtk_spin_button_new_with_range(0.5, 8.0, 0.5);
+
+	// Get actual speed from SDL
+	double current_speed = get_layer_speed(layer_number - 1); // GTK layer 1 -> SDL layer 0
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(speed_spin), current_speed);
+
 	gtk_box_pack_start(GTK_BOX(speed_box), speed_label, FALSE, FALSE, 5);
 	gtk_box_pack_start(GTK_BOX(speed_box), speed_spin, TRUE, TRUE, 0);
 
@@ -751,6 +761,55 @@ static void on_app_destroy(GtkWidget *widget, gpointer data)
     gtk_main_quit();
 }
 
+void on_sequencer_size_allocate(GtkWidget *widget, GdkRectangle *allocation, gpointer user_data) {
+    GtkWidget *loop_end_bar = GTK_WIDGET(user_data);
+
+    int width = allocation->width;
+    gtk_widget_set_margin_start(loop_end_bar, width - 4); // 4 = bar width
+}
+
+static gboolean
+on_loop_bar_button_press(GtkWidget *bar,
+                         GdkEventButton *event,
+                         gpointer user_data)
+{
+    GtkWidget *overlay = GTK_WIDGET(user_data);
+
+    gint mouse_x, mouse_y;
+    gtk_widget_translate_coordinates(
+        bar,
+        overlay,
+        (gint)event->x,
+        (gint)event->y,
+        &mouse_x,
+        &mouse_y
+    );
+
+    gint bar_x, bar_y;
+    gtk_widget_translate_coordinates(
+        bar,
+        overlay,
+        0, 0,
+        &bar_x,
+        &bar_y
+    );
+
+    g_print(
+        "PRESS\n"
+        "  mouse_x: %d\n"
+        "  bar_x  : %d\n",
+        mouse_x,
+        bar_x
+    );
+
+    /* SNAP bar to mouse */
+    gtk_widget_set_margin_start(bar, mouse_x);
+
+    return TRUE;
+}
+
+
+
 
 // --------------------
 // MAIN
@@ -872,7 +931,7 @@ int main(int argc, char *argv[]) {
         gtk_box_pack_start(GTK_BOX(left_container), create_layer_component("LAYER 4",4), FALSE, FALSE, 0);
         
 	// Version label
-	GtkWidget *version_label = gtk_label_new("Version 0.0.1 by Marin Durand");
+	GtkWidget *version_label = gtk_label_new("Version 0.0.1 by Rekav");
 	gtk_widget_set_name(version_label, "version-label");
 	gtk_widget_set_halign(version_label, GTK_ALIGN_CENTER);
 	gtk_widget_set_valign(version_label, GTK_ALIGN_END);
@@ -934,21 +993,274 @@ int main(int argc, char *argv[]) {
 	g_timeout_add(33, sdl_refresh_loop, render_panel);
 
 
+	// =====================================================
+	// Sequencer panel container
+	// =====================================================
+	GtkWidget *sequencer_container = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+	gtk_widget_set_name(sequencer_container, "sequencer-container");
+	gtk_widget_set_size_request(sequencer_container, -1, 150);
+	gtk_widget_set_vexpand(sequencer_container, FALSE);
+	gtk_widget_set_hexpand(sequencer_container, TRUE);
+	gtk_box_pack_start(GTK_BOX(right_container), sequencer_container, FALSE, FALSE, 0);
 
+	// =====================================================
+	// Left column: controls (fixed width)
+	// =====================================================
+	GtkWidget *controls_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+	gtk_widget_set_name(controls_box, "timeline-controls");
+	gtk_widget_set_size_request(controls_box, 100, -1);
+	gtk_widget_set_vexpand(controls_box, TRUE);
 
-        // Timeline panel
-	GtkWidget *timeline_panel = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-	gtk_widget_set_name(timeline_panel, "timeline-panel");
-	gtk_widget_set_size_request(timeline_panel, -1, TIMELINE_PANEL_HEIGHT);
-	gtk_widget_set_vexpand(timeline_panel, FALSE);
-	gtk_widget_set_hexpand(timeline_panel, TRUE);
-	gtk_box_pack_start(GTK_BOX(right_container), timeline_panel, FALSE, FALSE, 0);
+	// -----------------------------------------------------
+	// Row 1: Playback controls
+	// -----------------------------------------------------
+	GtkWidget *row_playback = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+	gtk_widget_set_halign(row_playback, GTK_ALIGN_CENTER);
+	gtk_widget_set_valign(row_playback, GTK_ALIGN_CENTER);
+
+	GtkWidget *sequence_play = gtk_button_new_from_icon_name("media-playback-start", GTK_ICON_SIZE_BUTTON);
+	GtkWidget *sequence_pause = gtk_button_new_from_icon_name("media-playback-pause", GTK_ICON_SIZE_BUTTON);
+	GtkWidget *sequence_restart = gtk_button_new_from_icon_name("media-seek-backward", GTK_ICON_SIZE_BUTTON);
+	GtkWidget *sequence_loop = gtk_button_new_from_icon_name("media-playlist-repeat", GTK_ICON_SIZE_BUTTON);
+        gtk_widget_set_name(sequence_play, "sequence-play");
+        gtk_widget_set_name(sequence_pause, "sequence-pause");
+        gtk_widget_set_name(sequence_restart, "sequence-restart");
+        gtk_widget_set_name(sequence_loop, "sequence-loop");
+        
+	gtk_box_pack_start(GTK_BOX(row_playback), sequence_play, FALSE, FALSE, 2);
+	gtk_box_pack_start(GTK_BOX(row_playback), sequence_pause, FALSE, FALSE, 2);
+	gtk_box_pack_start(GTK_BOX(row_playback), sequence_restart, FALSE, FALSE, 2);
+	gtk_box_pack_start(GTK_BOX(row_playback), sequence_loop, FALSE, FALSE, 2);
 	
+	// -----------------------------------------------------
+	// Row 2: Export / destination
+	// -----------------------------------------------------
+	GtkWidget *row_export = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+	gtk_widget_set_name(row_export, "export-row");
+	gtk_widget_set_size_request(button_row, 150, 36);
+	
+	GtkWidget *btn_export = gtk_button_new_with_label("Dwld. MP4");
+	GtkWidget *btn_open_export = gtk_button_new_with_label("Opn. Folder");
+	gtk_widget_set_name(btn_export, "btn-export");
+	gtk_widget_set_name(btn_open_export, "btn-open-export");
+        gtk_widget_set_size_request(btn_export, 100, 36);
+	gtk_widget_set_size_request(btn_open_export, 100, 36);
+	gtk_box_pack_start(GTK_BOX(row_export), btn_export, TRUE, TRUE, 2);
+	gtk_box_pack_start(GTK_BOX(row_export), btn_open_export, TRUE, TRUE, 2);
+	
+	// -----------------------------------------------------
+	// Row 3: Sequence info (hard-coded, 1 spec per row)
+	// -----------------------------------------------------
+	GtkWidget *row_info = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
+	gtk_widget_set_name(row_info, "sequence-info");
+
+	/* ---- Seq. duration ---- */
+	GtkWidget *row_duration = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+	GtkWidget *lbl_duration_title = gtk_label_new("Seq. duration:");
+	GtkWidget *lbl_duration_value = gtk_label_new("8.0 s");
+
+	gtk_label_set_xalign(GTK_LABEL(lbl_duration_title), 0.0);
+	gtk_label_set_xalign(GTK_LABEL(lbl_duration_value), 1.0);
+
+	gtk_style_context_add_class(
+	    gtk_widget_get_style_context(lbl_duration_title),
+	    "sequence-info-title"
+	);
+	gtk_style_context_add_class(
+	    gtk_widget_get_style_context(lbl_duration_value),
+	    "sequence-info-value"
+	);
+
+	gtk_box_pack_start(GTK_BOX(row_duration), lbl_duration_title, TRUE, TRUE, 0);
+	gtk_box_pack_start(GTK_BOX(row_duration), lbl_duration_value, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(row_info), row_duration, FALSE, FALSE, 1);
+
+	/* ---- Est. size ---- */
+	GtkWidget *row_size = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+	GtkWidget *lbl_size_title = gtk_label_new("Est. size:");
+	GtkWidget *lbl_size_value = gtk_label_new("~42 MB");
+
+	gtk_label_set_xalign(GTK_LABEL(lbl_size_title), 0.0);
+	gtk_label_set_xalign(GTK_LABEL(lbl_size_value), 1.0);
+
+	gtk_style_context_add_class(
+	    gtk_widget_get_style_context(lbl_size_title),
+	    "sequence-info-title"
+	);
+	gtk_style_context_add_class(
+	    gtk_widget_get_style_context(lbl_size_value),
+	    "sequence-info-value"
+	);
+
+	gtk_box_pack_start(GTK_BOX(row_size), lbl_size_title, TRUE, TRUE, 0);
+	gtk_box_pack_start(GTK_BOX(row_size), lbl_size_value, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(row_info), row_size, FALSE, FALSE, 1);
+
+	/* ---- Nb. frames ---- */
+	GtkWidget *row_frames = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+	GtkWidget *lbl_frames_title = gtk_label_new("Nb. frames:");
+	GtkWidget *lbl_frames_value = gtk_label_new("240");
+
+	gtk_label_set_xalign(GTK_LABEL(lbl_frames_title), 0.0);
+	gtk_label_set_xalign(GTK_LABEL(lbl_frames_value), 1.0);
+
+	gtk_style_context_add_class(
+	    gtk_widget_get_style_context(lbl_frames_title),
+	    "sequence-info-title"
+	);
+	gtk_style_context_add_class(
+	    gtk_widget_get_style_context(lbl_frames_value),
+	    "sequence-info-value"
+	);
+
+	gtk_box_pack_start(GTK_BOX(row_frames), lbl_frames_title, TRUE, TRUE, 0);
+	gtk_box_pack_start(GTK_BOX(row_frames), lbl_frames_value, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(row_info), row_frames, FALSE, FALSE, 1);
+
+	/* ---- Resolution ---- */
+	GtkWidget *row_resolution = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+	GtkWidget *lbl_resolution_title = gtk_label_new("Resolution:");
+	GtkWidget *lbl_resolution_value = gtk_label_new("1920×1080");
+
+	gtk_label_set_xalign(GTK_LABEL(lbl_resolution_title), 0.0);
+	gtk_label_set_xalign(GTK_LABEL(lbl_resolution_value), 1.0);
+
+	gtk_style_context_add_class(
+	    gtk_widget_get_style_context(lbl_resolution_title),
+	    "sequence-info-title"
+	);
+	gtk_style_context_add_class(
+	    gtk_widget_get_style_context(lbl_resolution_value),
+	    "sequence-info-value"
+	);
+
+	gtk_box_pack_start(GTK_BOX(row_resolution), lbl_resolution_title, TRUE, TRUE, 0);
+	gtk_box_pack_start(GTK_BOX(row_resolution), lbl_resolution_value, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(row_info), row_resolution, FALSE, FALSE, 1);
+
+
+	// -----------------------------------------------------
+	// Pack rows into controls box
+	// -----------------------------------------------------
+	gtk_box_pack_start(GTK_BOX(controls_box), row_playback, FALSE, FALSE, 5);
+	gtk_box_pack_start(GTK_BOX(controls_box), row_export, FALSE, FALSE, 5);
+	gtk_box_pack_start(GTK_BOX(controls_box), row_info, FALSE, FALSE, 10);
+
+	// =====================================================
+	// Right column: Sequencer view (preview area)
+	// =====================================================
+	// =====================================================
+	// Sequencer view container
+	// =====================================================
+	GtkWidget *sequencer_view = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+	gtk_widget_set_name(sequencer_view, "sequencer-view");
+	gtk_widget_set_vexpand(sequencer_view, TRUE);
+	gtk_widget_set_hexpand(sequencer_view, TRUE);
+
+	// -----------------------------------------------------
+	// Sequence preview container (horizontal row of frames + loop bars)
+	// -----------------------------------------------------
+	// Overlay container for frames + bars
+	GtkWidget *sequence_preview_overlay = gtk_overlay_new();
+	gtk_widget_set_name(sequence_preview_overlay, "sequence-preview-overlay");
+	gtk_widget_set_vexpand(sequence_preview_overlay, TRUE);
+	gtk_widget_set_hexpand(sequence_preview_overlay, TRUE);
+	gtk_box_pack_start(GTK_BOX(sequencer_view), sequence_preview_overlay, TRUE, TRUE, 0);
+
+	// Frames horizontal box
+	GtkWidget *frames_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
+	gtk_widget_set_name(frames_box, "frames-box");
+	gtk_widget_set_hexpand(frames_box, TRUE);
+	gtk_widget_set_vexpand(frames_box, TRUE);
+	gtk_container_add(GTK_CONTAINER(sequence_preview_overlay), frames_box);
+
+	// Add fake frames
+	for (int i = 0; i < 6; i++) {
+	    GtkWidget *frame = gtk_label_new("Frame");
+	    gtk_widget_set_name(frame, "frame-preview");
+	    gtk_widget_set_size_request(frame, 50, 80);
+	    gtk_box_pack_start(GTK_BOX(frames_box), frame, FALSE, FALSE, 2);
+	}
+
+	// Loop start bar
+	GtkWidget *loop_start_bar = gtk_event_box_new();
+	gtk_widget_set_name(loop_start_bar, "loop-start-bar");
+	gtk_widget_set_size_request(loop_start_bar, LOOP_BAR_WIDTH, -1);
+	gtk_widget_set_halign(loop_start_bar, GTK_ALIGN_START);
+	gtk_widget_set_valign(loop_start_bar, GTK_ALIGN_FILL);
+	gtk_widget_set_hexpand(loop_start_bar, FALSE);
+	gtk_overlay_add_overlay(GTK_OVERLAY(sequence_preview_overlay), loop_start_bar);
+	gtk_widget_set_margin_start(loop_start_bar, 0);
+	
+	gtk_widget_add_events(loop_start_bar, GDK_BUTTON_PRESS_MASK);
+	g_signal_connect(
+	    loop_start_bar,
+	    "button-press-event",
+	    G_CALLBACK(on_loop_bar_button_press),
+	    sequence_preview_overlay   // pass overlay as user_data
+	);
+
+
+	// Loop end bar
+	GtkWidget *loop_end_bar = gtk_event_box_new();
+	gtk_widget_set_name(loop_end_bar, "loop-end-bar");
+
+	// Fixed width
+	gtk_widget_set_size_request(loop_end_bar, LOOP_BAR_WIDTH, -1);
+
+	// Align to start horizontally, fill vertically
+	gtk_widget_set_halign(loop_end_bar, GTK_ALIGN_START);
+	gtk_widget_set_valign(loop_end_bar, GTK_ALIGN_FILL);
+
+	// Do not expand horizontally
+	gtk_widget_set_hexpand(loop_end_bar, FALSE);
+	gtk_widget_set_vexpand(loop_end_bar, TRUE);
+
+	// Add to overlay
+	gtk_overlay_add_overlay(GTK_OVERLAY(sequence_preview_overlay), loop_end_bar);
+
+	// Initial position: 200px from left
+	//gtk_widget_set_margin_start(loop_end_bar, 200);
+
+
+	// TODO: attach drag signals to loop_start_bar / loop_end_bar
+	// g_signal_connect(loop_start_bar, "button-press-event", ...);
+	// g_signal_connect(loop_start_bar, "motion-notify-event", ...);
+
+	// -----------------------------------------------------
+	// Timeline labels (bottom)
+	// -----------------------------------------------------
+	GtkWidget *timeline_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+	gtk_widget_set_name(timeline_box, "timeline-box");
+	gtk_box_pack_start(GTK_BOX(sequencer_view), timeline_box, FALSE, FALSE, 0);
+
+	// Left label
+	GtkWidget *timeline_start_label = gtk_label_new("00:00");
+	gtk_widget_set_name(timeline_start_label, "timeline-start-label");
+	gtk_box_pack_start(GTK_BOX(timeline_box), timeline_start_label, FALSE, FALSE, 5);
+
+	// Spacer to push right label to the end
+	GtkWidget *timeline_spacer = gtk_label_new(NULL);
+	gtk_widget_set_hexpand(timeline_spacer, TRUE);
+	gtk_box_pack_start(GTK_BOX(timeline_box), timeline_spacer, TRUE, TRUE, 0);
+
+	// Right label
+	GtkWidget *timeline_end_label = gtk_label_new("--:--");
+	gtk_widget_set_name(timeline_end_label, "timeline-end-label");
+	gtk_box_pack_start(GTK_BOX(timeline_box), timeline_end_label, FALSE, FALSE, 5);
+
+
+	// =====================================================
+	// Pack left + right into main container
+	// =====================================================
+	gtk_box_pack_start(GTK_BOX(sequencer_container), controls_box, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(sequencer_container), sequencer_view, TRUE, TRUE, 0);	
 	
 	g_signal_connect(btn_update, "clicked", G_CALLBACK(on_update_render_clicked), render_panel);
+	// Connect the callback
+	g_signal_connect(sequencer_view, "size-allocate",G_CALLBACK(on_sequencer_size_allocate), loop_end_bar);
 
     
-
         // --------------------
         // LOAD CSS
         // --------------------

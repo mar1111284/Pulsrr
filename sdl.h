@@ -30,6 +30,9 @@ static inline int  sdl_is_playing(void)   { return is_playing; }
 
 void set_layer_modified(int layer_number);
 
+void set_layer_speed(int layer_index, double speed);
+double get_layer_speed(int layer_index);
+
 RenderState get_render_state(void);
 
 void start_load_textures_async();

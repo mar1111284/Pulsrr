@@ -24,6 +24,8 @@
 
 #define TIMELINE_PANEL_HEIGHT 200
 
+#define LOOP_BAR_WIDTH 6
+
 typedef enum {
     APHORISM_OK = 0,
     APHORISM_FILE_NOT_FOUND,

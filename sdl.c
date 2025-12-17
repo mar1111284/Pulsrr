@@ -25,12 +25,33 @@ void start_load_textures_async() {
 static SDL_Window   *sdl_win = NULL;
 static SDL_Renderer *renderer = NULL;
 
+double layer_speed[4] = {1, 1.0, 1.0, 1.0}; // default 1x
+Uint32 last_update[4] = {0, 0, 0, 0};          // for fractional speeds
+
 RenderState get_render_state(void) { return render_state; }
 LayerState layer_state[4] = {LAYER_EMPTY, LAYER_EMPTY, LAYER_EMPTY, LAYER_EMPTY};
 
 // Global state variables defined once
 RenderState render_state = RENDER_STATE_NO_FRAMES;
 int is_playing = 0;
+
+/* -----------------------------
+ * SDL Layer Speed Accessors
+ * ----------------------------- */
+
+// Setter
+void set_layer_speed(int layer_index, double speed) {
+    if (layer_index < 0 || layer_index > 3) return;
+    if (speed <= 0.0) speed = 0.01; // prevent divide by zero
+    layer_speed[layer_index] = speed;
+    g_print("[SDL] Layer %d speed set to %.2f\n", layer_index + 1, speed);
+}
+
+// Getter
+double get_layer_speed(int layer_index) {
+    if (layer_index < 0 || layer_index > 3) return 1.0;
+    return layer_speed[layer_index];
+}
 
 static void handle_sdl_events(void) {
     SDL_Event e;
@@ -348,6 +369,11 @@ void sdl_draw_frame() {
 	if (!is_playing) return;
 
 	// --- Increment frames independently ---
+	
+	Uint32 now = SDL_GetTicks();
+	Uint32 base_delay = 1000 / 25; // 25 FPS default
+	
+	/*
 	frame_1++;
 	if (frame_1 > total_frames_1) frame_1 = 1;
 	frame_2++;
@@ -356,6 +382,53 @@ void sdl_draw_frame() {
 	if (frame_3 > total_frames_3) frame_3 = 1;
 	frame_4++;
 	if (frame_4 > total_frames_4) frame_4 = 1;
+	*/
+	
+
+	// --- Layer 1 ---
+	if (layer_speed[0] >= 1.0) {
+	    frame_1 += (int)layer_speed[0];
+	    if (frame_1 > total_frames_1) frame_1 = 1;
+	} else if (now - last_update[0] >= (Uint32)(base_delay / layer_speed[0])) {
+	    frame_1++;
+	    if (frame_1 > total_frames_1) frame_1 = 1;
+	    last_update[0] = now;
+	}
+
+	// --- Layer 2 ---
+	if (layer_speed[1] >= 1.0) {
+	    frame_2 += (int)layer_speed[1];
+	    if (frame_2 > total_frames_2) frame_2 = 1;
+	} else if (now - last_update[1] >= (Uint32)(base_delay / layer_speed[1])) {
+	    frame_2++;
+	    if (frame_2 > total_frames_2) frame_2 = 1;
+	    last_update[1] = now;
+	}
+
+	// --- Layer 3 ---
+	if (layer_speed[2] >= 1.0) {
+	    frame_3 += (int)layer_speed[2];
+	    if (frame_3 > total_frames_3) frame_3 = 1;
+	} else if (now - last_update[2] >= (Uint32)(base_delay / layer_speed[2])) {
+	    frame_3++;
+	    if (frame_3 > total_frames_3) frame_3 = 1;
+	    last_update[2] = now;
+	}
+
+	// --- Layer 4 ---
+	if (layer_speed[3] >= 1.0) {
+	    frame_4 += (int)layer_speed[3];
+	    if (frame_4 > total_frames_4) frame_4 = 1;
+	} else if (now - last_update[3] >= (Uint32)(base_delay / layer_speed[3])) {
+	    frame_4++;
+	    if (frame_4 > total_frames_4) frame_4 = 1;
+	    last_update[3] = now;
+	}
+
+
+
+// Repeat similarly for frames 2, 3, 4
+
 }
 
 
