@@ -4,6 +4,7 @@
 #include <string.h>
 #include <errno.h>
 #include <time.h>
+#include <glib/gstdio.h>
 
 AphorismErrorCode get_random_aphorism(const char *filename, char **out_str) {
     if (!filename || !out_str) return APHORISM_MEMORY_ERROR;
@@ -61,6 +62,29 @@ void on_drag_data_received(GtkWidget *widget,
 
     gtk_drag_finish(context, TRUE, FALSE, time);
 }
+
+void cleanup_frames_folders(void)
+{
+    for (int i = 1; i <= MAX_LAYERS; i++) {
+        char path[256];
+        snprintf(path, sizeof(path), "Frames_%d", i);
+
+        if (!g_file_test(path, G_FILE_TEST_IS_DIR))
+            continue;
+
+        /* Try GLib removal first */
+        if (g_remove(path) != 0) {
+            /* Directory not empty → recursive fallback */
+            char cmd[512];
+            snprintf(cmd, sizeof(cmd), "rm -rf \"%s\"", path);
+
+            if (system(cmd) != 0) {
+                g_warning("Failed to remove folder: %s", path);
+            }
+        }
+    }
+}
+
 
 
 

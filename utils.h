@@ -4,6 +4,26 @@
 #include <glib.h>
 #include <gtk/gtk.h> 
 
+#define MINIMAL_WINDOW_WIDTH   1200
+#define MINIMAL_WINDOW_HEIGHT  900
+
+#define LEFT_CONTAINER_WIDTH     250
+#define RIGHT_CONTAINER_WIDTH    900
+
+#define LOGO_HEIGHT    42
+#define HEADER_HEIGHT  18
+#define BUTTON_ROW_HEIGHT 30
+
+#define LAYER_COMPONENT_WIDTH 250
+#define LAYER_COMPONENT_HEIGHT   42
+
+#define PREVIEW_WIDTH  100
+#define PREVIEW_HEIGHT 42
+
+#define MAX_LAYERS 4
+
+#define TIMELINE_PANEL_HEIGHT 200
+
 typedef enum {
     APHORISM_OK = 0,
     APHORISM_FILE_NOT_FOUND,
@@ -44,13 +64,9 @@ static inline gboolean is_mp4_file(const char *name) {
     return result;
 }
 
-void on_drag_data_received(GtkWidget *widget,
-                                  GdkDragContext *context,
-                                  gint x, gint y,
-                                  GtkSelectionData *data,
-                                  guint info, guint time,
-                                  gpointer user_data);
+void on_drag_data_received(GtkWidget *widget,GdkDragContext *context,gint x, gint y,GtkSelectionData *data,guint info, guint time,gpointer user_data);
 
+void cleanup_frames_folders(void);
 
 #endif // UTILS_H
 

@@ -11,7 +11,9 @@
 static SDL_Window   *sdl_win = NULL;
 static SDL_Renderer *renderer = NULL;
 
-static int is_playing = 0;
+// Global state variables defined once
+RenderState render_state = RENDER_STATE_NO_FRAMES;
+int is_playing = 0;
 
 static void handle_sdl_events(void) {
     SDL_Event e;
@@ -24,16 +26,6 @@ static void handle_sdl_events(void) {
         }
     }
 }
-
-void sdl_set_playing(int playing) {
-    is_playing = playing ? 1 : 0;
-    g_print("SDL playback: %s\n", is_playing ? "PLAY" : "PAUSE");
-}
-
-int sdl_is_playing(void) {
-    return is_playing;
-}
-
 
 
 void sdl_restart(GtkWidget *widget) {
@@ -91,6 +83,14 @@ static SDL_Texture **textures_2_gray = NULL;
 static SDL_Texture **textures_3_gray = NULL;
 static SDL_Texture **textures_4_gray = NULL;
 
+static void render_loading_screen(void) {
+    SDL_SetRenderDrawColor(renderer, 18, 18, 18, 255);
+    SDL_RenderClear(renderer);
+
+    // Text will be added next step
+    SDL_RenderPresent(renderer);
+}
+
 // Transparency for each layer
 static Uint8 layer_alpha[4] = {255, 128, 128, 128};
 static Uint8 layer_gray[4] = {0, 0, 0, 0};
@@ -106,7 +106,6 @@ int is_layer_gray(int layer_number) {
     if (layer_number < 1 || layer_number > 4) return 0;
     return layer_gray[layer_number - 1];
 }
-
 
 // Getter for renderer
 SDL_Renderer* sdl_get_renderer() {
@@ -144,37 +143,41 @@ void set_transparency(int layer_number, int alpha) {
 
 // Load SDL_Texture from PNG with alpha enabled
 static SDL_Texture* load_frame_texture(const char *filename) {
-    SDL_Surface *surf = IMG_Load(filename);
-    if (!surf) {
-        g_print("⚠️ Failed to load %s\n", filename);
-        return NULL;
-    }
-    SDL_Texture *tex = SDL_CreateTextureFromSurface(renderer, surf);
-    SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND); // allow transparency
-    SDL_FreeSurface(surf);
-    return tex;
+	sdl_set_loading(); // loading begins
+	SDL_Surface *surf = IMG_Load(filename);
+	if (!surf) {
+	g_print("⚠️ Failed to load %s\n", filename);
+	return NULL;
+	}
+	SDL_Texture *tex = SDL_CreateTextureFromSurface(renderer, surf);
+	SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND); // allow transparency
+	SDL_FreeSurface(surf);
+	sdl_set_ready(); // all frames loaded
+	return tex;
 }
 
 // Load SDL_Texture from PNG and return a grayscale version
 static SDL_Texture* load_frame_texture_gray(const char *filename) {
-    SDL_Surface *surf = IMG_Load(filename);
-    if (!surf) {
-        g_print("⚠️ Failed to load %s\n", filename);
-        return NULL;
-    }
+	sdl_set_loading(); // loading begins
+	SDL_Surface *surf = IMG_Load(filename);
+	if (!surf) {
+	g_print("⚠️ Failed to load %s\n", filename);
+	return NULL;
+	}
 
-    // Apply grayscale on a copy
-    SDL_Surface *surf_gray = SDL_ConvertSurface(surf, surf->format, 0);
-    apply_grayscale(surf_gray);
+	// Apply grayscale on a copy
+	SDL_Surface *surf_gray = SDL_ConvertSurface(surf, surf->format, 0);
+	apply_grayscale(surf_gray);
 
-    // Create texture from grayscale surface
-    SDL_Texture *tex_gray = SDL_CreateTextureFromSurface(renderer, surf_gray);
-    SDL_SetTextureBlendMode(tex_gray, SDL_BLENDMODE_BLEND);
+	// Create texture from grayscale surface
+	SDL_Texture *tex_gray = SDL_CreateTextureFromSurface(renderer, surf_gray);
+	SDL_SetTextureBlendMode(tex_gray, SDL_BLENDMODE_BLEND);
 
-    SDL_FreeSurface(surf_gray);
-    SDL_FreeSurface(surf);
+	SDL_FreeSurface(surf_gray);
+	SDL_FreeSurface(surf);
+	sdl_set_ready(); // all frames loaded
 
-    return tex_gray;
+	return tex_gray;
 }
 
 
@@ -196,9 +199,28 @@ static void preload_textures_1() {
 }
 */
 
+static void render_no_frames_screen(void) {
+    // Slightly lighter than #0d0d0d
+    SDL_SetRenderDrawColor(renderer, 18, 18, 18, 255);
+    SDL_RenderClear(renderer);
+
+    // Placeholder: text comes later
+    SDL_RenderPresent(renderer);
+}
+
 // Draw frames with independent looping
 void sdl_draw_frame() {
 	if (!renderer) return;
+	
+	if (render_state == RENDER_STATE_NO_FRAMES) {
+		render_no_frames_screen();
+		return;
+	}
+	
+	if (render_state == RENDER_STATE_LOADING) {
+		render_loading_screen();
+		return;
+	}
 
 	// 👇 handle keyboard
 	handle_sdl_events();
@@ -260,7 +282,6 @@ void sdl_draw_frame() {
 	if (frame_4 > total_frames_4) frame_4 = 1;
 }
 
-
 // Embed SDL into GTK DrawingArea
 int sdl_embed_in_gtk(GtkWidget *widget) {
 	GdkWindow *gdk = gtk_widget_get_window(widget);
@@ -298,6 +319,17 @@ int sdl_embed_in_gtk(GtkWidget *widget) {
 	total_frames_3 = count_frames("Frames_3");  
 	total_frames_4 = count_frames("Frames_4");
 	
+	if (total_frames_1 == 0 &&
+	    total_frames_2 == 0 &&
+	    total_frames_3 == 0 &&
+	    total_frames_4 == 0) {
+
+	    render_state = RENDER_STATE_NO_FRAMES;
+	} else {
+	    render_state = RENDER_STATE_LOADING;
+	}
+
+		
 	printf("Frames in folder 1: %d\n", total_frames_1);
 	printf("Frames in folder 2: %d\n", total_frames_2);
 	printf("Frames in folder 3: %d\n", total_frames_3);

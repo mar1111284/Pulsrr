@@ -5,26 +5,6 @@
 #include "sdl.h"
 #include "utils.h"
 
-#define MINIMAL_WINDOW_WIDTH   1200
-#define MINIMAL_WINDOW_HEIGHT  900
-
-#define LEFT_CONTAINER_WIDTH     250
-#define RIGHT_CONTAINER_WIDTH    900
-
-#define LOGO_HEIGHT    42
-#define HEADER_HEIGHT  18
-#define BUTTON_ROW_HEIGHT 30
-
-#define LAYER_COMPONENT_WIDTH 250  // width of each layer component
-#define LAYER_COMPONENT_HEIGHT   42
-
-#define PREVIEW_WIDTH  100
-#define PREVIEW_HEIGHT 42
-
-#define MAX_LAYERS 4
-
-#define TIMELINE_PANEL_HEIGHT 200
-
 // SOME GLOBALS
 
 GtkWidget *global_modal_layer = NULL;
@@ -44,16 +24,9 @@ static gboolean close_modal_cb(gpointer data) {
 
 void update_layer_preview(int layer_number) {
 
-    g_print("[PREVIEW] called for layer %d\n", layer_number);
-
-    if (layer_number < 0 || layer_number > MAX_LAYERS) {
-        g_print("[PREVIEW] ERROR: invalid layer_number %d\n", layer_number);
-        return;
-    }
-
     GtkWidget *preview_box = layer_preview_boxes[layer_number];
     if (!preview_box) {
-        g_print("[PREVIEW] ERROR: preview_box is NULL for layer %d\n", layer_number);
+        g_warning("update_layer_preview: preview_box is NULL for layer %d", layer_number);
         return;
     }
 
@@ -61,67 +34,64 @@ void update_layer_preview(int layer_number) {
     snprintf(frame_path, sizeof(frame_path),
              "Frames_%d/frame_00001.png", layer_number);
 
-    g_print("[PREVIEW] checking file: %s\n", frame_path);
-
     if (!g_file_test(frame_path, G_FILE_TEST_EXISTS)) {
-        g_print("[PREVIEW] ERROR: file does NOT exist\n");
+        g_warning("update_layer_preview: file does NOT exist: %s", frame_path);
         return;
     }
 
-    g_print("[PREVIEW] file exists, clearing preview box\n");
-
     // Clear previous preview
     GList *children = gtk_container_get_children(GTK_CONTAINER(preview_box));
-    for (GList *l = children; l; l = l->next) {
-        gtk_widget_destroy(GTK_WIDGET(l->data));
+    if (children) {
+        for (GList *l = children; l; l = l->next) {
+            gtk_widget_destroy(GTK_WIDGET(l->data));
+        }
+        g_list_free(children);
+        g_message("update_layer_preview: old preview removed for layer %d", layer_number);
     }
-    g_list_free(children);
-
-    g_print("[PREVIEW] loading pixbuf\n");
 
     // Load image
     GError *error = NULL;
     GdkPixbuf *pixbuf = gdk_pixbuf_new_from_file(frame_path, &error);
     if (!pixbuf) {
-        g_printerr("[PREVIEW] Pixbuf load error: %s\n", error->message);
+        g_warning("update_layer_preview: Pixbuf load error: %s", error->message);
         g_error_free(error);
         return;
     }
 
     int pw = gdk_pixbuf_get_width(pixbuf);
     int ph = gdk_pixbuf_get_height(pixbuf);
-    g_print("[PREVIEW] image loaded (%dx%d)\n", pw, ph);
 
     int target_width = 116;
     int target_height = (int)((double)target_width / pw * ph);
 
-    GdkPixbuf *scaled =
-        gdk_pixbuf_scale_simple(pixbuf,
-                                target_width,
-                                target_height,
-                                GDK_INTERP_BILINEAR);
+    GdkPixbuf *scaled = gdk_pixbuf_scale_simple(pixbuf,
+                                                target_width,
+                                                target_height,
+                                                GDK_INTERP_BILINEAR);
 
     if (!scaled) {
-        g_print("[PREVIEW] ERROR: scaling failed\n");
+        g_warning("update_layer_preview: scaling failed for layer %d", layer_number);
         g_object_unref(pixbuf);
         return;
     }
 
     GtkWidget *image = gtk_image_new_from_pixbuf(scaled);
     gtk_container_add(GTK_CONTAINER(preview_box), image);
+    gtk_widget_queue_draw(preview_box);
     gtk_widget_show_all(preview_box);
-
-    g_print("[PREVIEW] preview updated successfully\n");
+    
+    g_message("update_layer_preview: new preview set for layer %d", layer_number);
 
     g_object_unref(pixbuf);
     g_object_unref(scaled);
 }
 
 
+
 gboolean update_preview_idle(gpointer data) {
     int layer_number = GPOINTER_TO_INT(data);
     int test_layer = GPOINTER_TO_INT(data);
-    g_print("[PREVIEW] called for layer %d\n", test_layer);
+    g_print("[UPDATE PREVIEW] called for layer %d\n", test_layer);
 
     update_layer_preview(layer_number);
     return FALSE;
@@ -268,9 +238,8 @@ void on_export_clicked(GtkButton *button, gpointer user_data) {
     else if (g_strcmp0(scale_text, "360p") == 0) scale_width = 640;
 
     // Folder name
-    static int video_count = 1;
     char folder[256];
-    snprintf(folder, sizeof(folder), "Frames_%d", video_count++);
+    snprintf(folder, sizeof(folder), "Frames_%d", layer_number);
 
     // Create heap-allocated job
     ExportJob *job = g_malloc(sizeof(ExportJob));
@@ -769,6 +738,16 @@ static void on_pause_clicked(GtkWidget *widget, gpointer user_data) {
         sdl_set_playing(0);
 }
 
+static void on_app_destroy(GtkWidget *widget, gpointer data)
+{
+    sdl_set_playing(0);
+
+    cleanup_frames_folders();
+
+    gtk_main_quit();
+}
+
+
 // --------------------
 // MAIN
 // --------------------
@@ -779,7 +758,7 @@ int main(int argc, char *argv[]) {
         gtk_window_set_title(GTK_WINDOW(win), "Pulsrr Sequencer");
         gtk_window_set_default_size(GTK_WINDOW(win), MINIMAL_WINDOW_WIDTH, MINIMAL_WINDOW_HEIGHT);
         gtk_window_set_resizable(GTK_WINDOW(win), TRUE);
-        g_signal_connect(win, "destroy", G_CALLBACK(gtk_main_quit), NULL);
+        g_signal_connect(win, "destroy", G_CALLBACK(on_app_destroy), NULL);
 
         // Main horizontal container
         GtkWidget *main_hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
