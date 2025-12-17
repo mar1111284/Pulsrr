@@ -13,8 +13,11 @@ GtkWidget *layer_preview_boxes[MAX_LAYERS] = { NULL };
 // Callback
 void on_update_render_clicked(GtkButton *button, gpointer user_data) {
     GtkWidget *render_panel = GTK_WIDGET(user_data);
-    sdl_restart(render_panel);
+    //sdl_restart(render_panel);
+    g_print("[UPDATE_RENDER] called\n");
+    start_load_textures_async();
 }
+
 
 static gboolean close_modal_cb(gpointer data) {
     GtkWidget *modal = GTK_WIDGET(data);
@@ -153,7 +156,8 @@ static gboolean export_done_cb(gpointer data) {
     gtk_progress_bar_set_text(GTK_PROGRESS_BAR(job->progress_bar), "Export completed");
 
     // Close modal after 3 seconds
-    g_timeout_add_seconds(3, close_modal_cb, global_modal_layer);
+    //g_timeout_add_seconds(3, close_modal_cb, global_modal_layer);
+    set_layer_modified(job->layer_number);
     
     // render play 
     sdl_set_playing(1);

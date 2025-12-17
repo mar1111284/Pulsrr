@@ -11,8 +11,15 @@ typedef enum {
     RENDER_STATE_READY
 } RenderState;
 
+typedef enum {
+    LAYER_EMPTY,
+    LAYER_UP_TO_DATE,
+    LAYER_MODIFIED
+} LayerState;
+
 // Declare globals as extern
 extern RenderState render_state;
+extern LayerState layer_state[4];
 extern int is_playing;
 
 // Static inline setters/getters
@@ -21,7 +28,13 @@ static inline void sdl_set_ready(void)    { render_state = RENDER_STATE_READY; }
 static inline void sdl_set_playing(int p) { is_playing = p ? 1 : 0; }
 static inline int  sdl_is_playing(void)   { return is_playing; }
 
-void sdl_load_textures(void);
+void set_layer_modified(int layer_number);
+
+RenderState get_render_state(void);
+
+void start_load_textures_async();
+
+void load_all_textures();
 
 SDL_Renderer* sdl_get_renderer(void);
 int  sdl_embed_in_gtk(GtkWidget *widget);
