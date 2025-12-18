@@ -6,6 +6,27 @@
 #include <time.h>
 #include <glib/gstdio.h>
 
+// Returns the number of sequence folders inside "sequences/"
+int get_number_of_sequences() {
+    const gchar *sequences_path = "sequences";
+    int count = 0;
+
+    GDir *dir = g_dir_open(sequences_path, 0, NULL);
+    if (!dir) return 0;
+
+    const gchar *name;
+    while ((name = g_dir_read_name(dir)) != NULL) {
+        gchar *path = g_build_filename(sequences_path, name, NULL);
+        if (g_file_test(path, G_FILE_TEST_IS_DIR)) {
+            count++;
+        }
+        g_free(path);
+    }
+
+    g_dir_close(dir);
+    return count;
+}
+
 AphorismErrorCode get_random_aphorism(const char *filename, char **out_str) {
     if (!filename || !out_str) return APHORISM_MEMORY_ERROR;
     *out_str = NULL;

@@ -26,6 +26,11 @@
 
 #define LOOP_BAR_WIDTH 6
 
+typedef enum { BAR_NONE, BAR_START, BAR_END } SelectedBar;
+
+extern SelectedBar selected_bar;  // <- just declare, don't define
+
+
 typedef enum {
     APHORISM_OK = 0,
     APHORISM_FILE_NOT_FOUND,
@@ -69,6 +74,7 @@ static inline gboolean is_mp4_file(const char *name) {
 void on_drag_data_received(GtkWidget *widget,GdkDragContext *context,gint x, gint y,GtkSelectionData *data,guint info, guint time,gpointer user_data);
 
 void cleanup_frames_folders(void);
+int get_number_of_sequences(void);
 
 #endif // UTILS_H
 

@@ -11,16 +11,31 @@
     font-size: 11px;
 }
 
+#music-control-label, #music-volume-label{
+    color: #33FF33;
+    font-size: 14px;
+}
+#music-volume-spin{
+	border: none;
+}
+
 .sequence-info-value {
     color: #33FF33;
     font-size: 11px;
     font-weight: 500;
 }
-#loop-start-bar, #loop-end-bar{
-    background-color: red;
+#loop-start-bar, #loop-end-bar {
+    background-color: #33FF33; /* dark gray, 50% transparent */
+}
+.bar-selected {
+    background: #33FF33;
 }
 
-#btn-play, #btn-pause, #sequence-play, #sequence-pause, #sequence-restart, #sequence-loop {
+#frames-box {
+	background-color: rgba(18, 18, 18, 255);
+}
+
+#btn-play, #btn-pause, #sequence-play, #sequence-pause, #sequence-restart, #sequence-loop, #music-btn {
     border: none;
     color: #33FF33;
     font-size: 14px;
@@ -165,6 +180,7 @@ spinbutton button.down {
     color: #33FF33;
     text-shadow: none;
     box-shadow: none;
+    border: none
 }
 
 /* Scale combo box */
@@ -298,7 +314,7 @@ button.text-button:hover {
 #btn-export, #btn-open-export {
     background: #0d0d0d;
     color: #33FF33;
-    font-size: 8px;
+    font-size: 10px;
     padding: 4px;
 }
 
