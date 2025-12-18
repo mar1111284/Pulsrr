@@ -180,7 +180,7 @@ spinbutton button.down {
     color: #33FF33;
     text-shadow: none;
     box-shadow: none;
-    border: none
+    border: none; 
 }
 
 /* Scale combo box */

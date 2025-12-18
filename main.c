@@ -26,8 +26,8 @@ static gboolean close_modal_cb(gpointer data) {
     return G_SOURCE_REMOVE; // run once
 }
 
-void update_layer_preview(int layer_number) {
-
+void update_layer_preview(int layer_number)
+{
     GtkWidget *preview_box = layer_preview_boxes[layer_number];
     if (!preview_box) {
         g_warning("update_layer_preview: preview_box is NULL for layer %d", layer_number);
@@ -43,63 +43,79 @@ void update_layer_preview(int layer_number) {
         return;
     }
 
-    // Clear previous preview
-    GList *children = gtk_container_get_children(GTK_CONTAINER(preview_box));
-    if (children) {
-        for (GList *l = children; l; l = l->next) {
-            gtk_widget_destroy(GTK_WIDGET(l->data));
-        }
-        g_list_free(children);
-        g_message("update_layer_preview: old preview removed for layer %d", layer_number);
-    }
+    // Ensure widget has the correct name for CSS selector
+    gtk_widget_set_name(preview_box, "sequence-preview-css");
 
-    // Load image
-    GError *error = NULL;
-    GdkPixbuf *pixbuf = gdk_pixbuf_new_from_file(frame_path, &error);
-    if (!pixbuf) {
-        g_warning("update_layer_preview: Pixbuf load error: %s", error->message);
-        g_error_free(error);
-        return;
-    }
+	// Build absolute path first
+	gchar *abs_path = g_strdup(frame_path);
+	if (!g_path_is_absolute(frame_path)) {
+	    gchar *cwd = g_get_current_dir();
+	    abs_path = g_build_filename(cwd, frame_path, NULL);
+	    g_free(cwd);
+	}
 
-    int pw = gdk_pixbuf_get_width(pixbuf);
-    int ph = gdk_pixbuf_get_height(pixbuf);
+	// Convert to URI
+	gchar *uri = g_filename_to_uri(abs_path, NULL, NULL);
+	g_free(abs_path);
 
-    int target_width = 116;
-    int target_height = (int)((double)target_width / pw * ph);
+	if (!uri) {
+	    g_warning("update_layer_preview: failed to convert path to URI");
+	    return;
+	}
 
-    GdkPixbuf *scaled = gdk_pixbuf_scale_simple(pixbuf,
-                                                target_width,
-                                                target_height,
-                                                GDK_INTERP_BILINEAR);
 
-    if (!scaled) {
-        g_warning("update_layer_preview: scaling failed for layer %d", layer_number);
-        g_object_unref(pixbuf);
-        return;
-    }
+    // Build CSS
+    gchar *css = g_strdup_printf(
+        "#sequence-preview-css {"
+        "  background-image: url('%s');"
+        "  background-repeat: repeat;"
+        "  background-position: center;"
+        "  background-size: contain;"
+        "}",
+        uri
+    );
 
-    GtkWidget *image = gtk_image_new_from_pixbuf(scaled);
-    gtk_container_add(GTK_CONTAINER(preview_box), image);
-    gtk_widget_queue_draw(preview_box);
-    gtk_widget_show_all(preview_box);
-    
-    g_message("update_layer_preview: new preview set for layer %d", layer_number);
+    // Apply CSS
+    GtkCssProvider *provider = gtk_css_provider_new();
+    gtk_css_provider_load_from_data(provider, css, -1, NULL);
 
-    g_object_unref(pixbuf);
-    g_object_unref(scaled);
+    GtkStyleContext *context = gtk_widget_get_style_context(preview_box);
+    gtk_style_context_add_provider(
+        context,
+        GTK_STYLE_PROVIDER(provider),
+        GTK_STYLE_PROVIDER_PRIORITY_USER
+    );
+
+    g_message("update_layer_preview: CSS background set for layer %d", layer_number);
+
+    // Cleanup
+    g_free(uri);
+    g_free(css);
+    g_object_unref(provider);
 }
-
-
 
 gboolean update_preview_idle(gpointer data) {
     int layer_number = GPOINTER_TO_INT(data);
-    int test_layer = GPOINTER_TO_INT(data);
-    g_print("[UPDATE PREVIEW] called for layer %d\n", test_layer);
+    g_print("[UPDATE PREVIEW] called for layer %d\n", layer_number);
 
+    GtkWidget *preview_box = layer_preview_boxes[layer_number];
+    if (!preview_box) {
+        g_warning("update_preview_idle: preview_box is NULL for layer %d", layer_number);
+        return FALSE;
+    }
+
+    // Clear previous children (this will remove "(EMPTY)" label if present)
+    GList *children = gtk_container_get_children(GTK_CONTAINER(preview_box));
+    for (GList *l = children; l; l = l->next)
+        gtk_widget_destroy(GTK_WIDGET(l->data));
+    g_list_free(children);
+
+    // Now call the real update
     update_layer_preview(layer_number);
-    return FALSE;
+
+    return FALSE; // remove from idle
 }
+
 
 
 typedef struct {
@@ -651,7 +667,7 @@ GtkWidget* create_layer_component(const char *label_text, int layer_number) {
 	// Preview box on the right
 	GtkWidget *preview_box = gtk_event_box_new();
 	gtk_widget_set_name(preview_box, "preview-box");
-	gtk_widget_set_size_request(preview_box, 200, -1); 
+	gtk_widget_set_size_request(preview_box, 150, -1); 
 	gtk_box_pack_start(GTK_BOX(layer_hbox), preview_box, FALSE, FALSE, 6);
 	
 	/* STORE IT */
@@ -659,11 +675,14 @@ GtkWidget* create_layer_component(const char *label_text, int layer_number) {
 	    layer_preview_boxes[layer_number] = preview_box;
 	}
 
-	GtkWidget *preview_label = gtk_label_new("(EMPTY)");
-	gtk_widget_set_name(preview_label, "preview-label");
-	gtk_widget_set_halign(preview_label, GTK_ALIGN_CENTER);
-	gtk_widget_set_valign(preview_label, GTK_ALIGN_CENTER);
-	gtk_container_add(GTK_CONTAINER(preview_box), preview_label);
+	if (is_frames_file_empty(layer_number)) {
+	    // Show "(EMPTY)" only if no frames
+	    GtkWidget *preview_label = gtk_label_new("(EMPTY)");
+	    gtk_widget_set_name(preview_label, "preview-label");
+	    gtk_widget_set_halign(preview_label, GTK_ALIGN_CENTER);
+	    gtk_widget_set_valign(preview_label, GTK_ALIGN_CENTER);
+	    gtk_container_add(GTK_CONTAINER(preview_box), preview_label);
+	}
 	
 	// ===== SMALL ABSOLUTE MENU LABEL ===== //
 	GtkWidget *menu_label = gtk_label_new("⋮");  // or "X" if you prefer
@@ -1338,7 +1357,6 @@ int main(int argc, char *argv[]) {
 	gtk_widget_show_all(sequences_box);
 
 
-	
 	// Loop start bar
 	loop_start_box = gtk_event_box_new();
 	gtk_widget_set_name(loop_start_box, "loop-start-bar");
@@ -1373,9 +1391,6 @@ int main(int argc, char *argv[]) {
 
 	g_signal_connect(loop_end_box, "button-press-event",
 		         G_CALLBACK(on_bar_clicked), (gpointer)BAR_END);
-
-                
-
 
 
 

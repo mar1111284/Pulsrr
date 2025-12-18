@@ -6,6 +6,38 @@
 #include <time.h>
 #include <glib/gstdio.h>
 
+gboolean is_frames_file_empty(int layer_number)
+{
+    char folder_path[512];
+    snprintf(folder_path, sizeof(folder_path), "Frames_%d", layer_number);
+
+    DIR *dir = opendir(folder_path);
+    if (!dir) {
+        // Folder does not exist
+        return TRUE;
+    }
+
+    struct dirent *entry;
+    gboolean has_frame = FALSE;
+
+    while ((entry = readdir(dir)) != NULL) {
+        // Skip . and ..
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+            continue;
+
+        // Check if filename starts with "frame_" and ends with ".png"
+        if (g_str_has_prefix(entry->d_name, "frame_") &&
+            g_str_has_suffix(entry->d_name, ".png")) {
+            has_frame = TRUE;
+            break;
+        }
+    }
+
+    closedir(dir);
+
+    return !has_frame; // TRUE if empty
+}
+
 // Returns the number of sequence folders inside "sequences/"
 int get_number_of_sequences() {
     const gchar *sequences_path = "sequences";

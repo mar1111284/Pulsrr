@@ -7,14 +7,14 @@
 #define MINIMAL_WINDOW_WIDTH   1200
 #define MINIMAL_WINDOW_HEIGHT  900
 
-#define LEFT_CONTAINER_WIDTH     250
-#define RIGHT_CONTAINER_WIDTH    900
+#define LEFT_CONTAINER_WIDTH     200
+#define RIGHT_CONTAINER_WIDTH    1000
 
 #define LOGO_HEIGHT    42
 #define HEADER_HEIGHT  18
 #define BUTTON_ROW_HEIGHT 30
 
-#define LAYER_COMPONENT_WIDTH 250
+#define LAYER_COMPONENT_WIDTH 200
 #define LAYER_COMPONENT_HEIGHT   42
 
 #define PREVIEW_WIDTH  100
@@ -47,7 +47,7 @@ typedef enum {
     DAD_NO_VALID_FILES
 } DragErrorCode;
 
-
+gboolean is_frames_file_empty(int layer_number);
 /**
  * Get a random aphorism from a text file.
  * 
