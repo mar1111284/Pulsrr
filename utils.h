@@ -4,11 +4,15 @@
 #include <glib.h>
 #include <gtk/gtk.h> 
 
+#define LOGO_WIDTH 185
+#define BUTTON_TOP_CONTROL_WIDTH 90
+#define BUTTON_TOP_CONTROL_HEIGHT 40
+
 #define MINIMAL_WINDOW_WIDTH   1200
 #define MINIMAL_WINDOW_HEIGHT  900
 
-#define LEFT_CONTAINER_WIDTH     200
-#define RIGHT_CONTAINER_WIDTH    1000
+#define LEFT_CONTAINER_WIDTH     250
+#define RIGHT_CONTAINER_WIDTH    950
 
 #define LOGO_HEIGHT    42
 #define HEADER_HEIGHT  18
@@ -29,15 +33,10 @@
 typedef enum { BAR_NONE, BAR_START, BAR_END } SelectedBar;
 
 extern SelectedBar selected_bar;  // <- just declare, don't define
+extern GtkWidget *global_modal_layer;
+//static gboolean close_modal_cb(gpointer data);
 
-
-typedef enum {
-    APHORISM_OK = 0,
-    APHORISM_FILE_NOT_FOUND,
-    APHORISM_EMPTY_FILE,
-    APHORISM_READ_FAILED,
-    APHORISM_MEMORY_ERROR
-} AphorismErrorCode;
+gboolean is_frames_file_empty(int layer_number);
 
 typedef enum {
     DAD_OK = 0,
@@ -48,15 +47,8 @@ typedef enum {
 } DragErrorCode;
 
 gboolean is_frames_file_empty(int layer_number);
-/**
- * Get a random aphorism from a text file.
- * 
- * @param filename Path to the aphorism file.
- * @param out_str Pointer to char* where the result will be stored.
- *                The caller must free it with g_free().
- * @return ErrorCode indicating success or type of error.
- */
-AphorismErrorCode get_random_aphorism(const char *filename, char **out_str);
+
+
 
 /**
  * Check if a filename has the ".mp4" extension (case-insensitive).

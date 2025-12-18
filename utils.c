@@ -6,6 +6,14 @@
 #include <time.h>
 #include <glib/gstdio.h>
 
+/*
+static gboolean close_modal_cb(gpointer data) {
+    GtkWidget *modal = GTK_WIDGET(data);
+    gtk_widget_hide(modal);
+    return G_SOURCE_REMOVE; // run once
+}
+*/
+
 gboolean is_frames_file_empty(int layer_number)
 {
     char folder_path[512];
@@ -57,33 +65,6 @@ int get_number_of_sequences() {
 
     g_dir_close(dir);
     return count;
-}
-
-AphorismErrorCode get_random_aphorism(const char *filename, char **out_str) {
-    if (!filename || !out_str) return APHORISM_MEMORY_ERROR;
-    *out_str = NULL;
-
-    FILE *file = fopen(filename, "r");
-    if (!file) return APHORISM_FILE_NOT_FOUND;
-
-    char buffer[256];
-    int lines_count = 0;
-    while (fgets(buffer, sizeof(buffer), file)) lines_count++;
-    if (lines_count == 0) { fclose(file); return APHORISM_EMPTY_FILE; }
-
-    int pick = rand() % lines_count;
-    rewind(file);
-    int current_line = 0;
-    while (fgets(buffer, sizeof(buffer), file)) if (current_line++ == pick) break;
-    fclose(file);
-
-    if (!buffer[0]) return APHORISM_READ_FAILED;
-
-    buffer[strcspn(buffer, "\r\n")] = 0;
-    *out_str = g_strdup(buffer);
-    if (!*out_str) return APHORISM_MEMORY_ERROR;
-
-    return APHORISM_OK;
 }
 
 // Drag-and-drop callback
