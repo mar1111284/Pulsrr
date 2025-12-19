@@ -12,11 +12,9 @@ static inline gboolean export_done_cb(gpointer data) {
 
 void on_load_button_clicked(GtkButton *button, gpointer user_data) {
 
-	// put pause
 	sdl_set_playing(0);
 
-	int layer_number = GPOINTER_TO_INT(user_data);
-	g_print("Load clicked on layer %d\n", layer_number); // TO DELETE 
+	guint8 layer_index = GPOINTER_TO_INT(user_data);
 
 	// Clear previous content if any
 	GList *children = gtk_container_get_children(GTK_CONTAINER(global_modal_layer));
@@ -25,40 +23,28 @@ void on_load_button_clicked(GtkButton *button, gpointer user_data) {
 	}
 	g_list_free(children);
 
-	// Create a black box
+	// Modal black box
 	GtkWidget *black_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
 	gtk_widget_set_size_request(black_box,400 ,400);
 	gtk_widget_set_name(black_box, "black-modal");
 	gtk_widget_set_halign(black_box, GTK_ALIGN_CENTER);
 	gtk_widget_set_valign(black_box, GTK_ALIGN_CENTER);
 
-	// --------------------
-	// Selected file label
-	// --------------------
+	// Drag and drop label
 	GtkWidget *selected_file_label = gtk_label_new("Drag an MP4 file here");
 	gtk_widget_set_name(selected_file_label, "selected-file-label");
 	gtk_box_pack_start(GTK_BOX(black_box), selected_file_label, FALSE, FALSE, 5);
 
-	// --------------------
 	// Enable drag-and-drop on black_box
-	// --------------------
 	GtkTargetEntry targets[] = {
 	{ "text/uri-list", 0, 0 }
 	};
-	gtk_drag_dest_set(GTK_WIDGET(black_box),
-		      GTK_DEST_DEFAULT_ALL,
-		      targets,
-		      G_N_ELEMENTS(targets),
-		      GDK_ACTION_COPY);
+	gtk_drag_dest_set(GTK_WIDGET(black_box),GTK_DEST_DEFAULT_ALL,targets,G_N_ELEMENTS(targets),GDK_ACTION_COPY);
 
-	g_signal_connect(black_box, "drag-data-received",G_CALLBACK(on_drag_data_received), selected_file_label);
-		     
-	// --------------------
-	// Button row: Cancel + Export
-	// --------------------
-	GtkWidget *button_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 35); // spacing 35px
+	// Button row (Cancel + Export)
+	GtkWidget *button_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 35);
 	gtk_widget_set_name(button_row, "button-row");
-	gtk_widget_set_size_request(button_row, 400, 50); // modal width, row height
+	gtk_widget_set_size_request(button_row, 400, 50);
 	gtk_box_pack_end(GTK_BOX(black_box), button_row, FALSE, FALSE, 0);
 
 	// Cancel button
@@ -73,19 +59,17 @@ void on_load_button_clicked(GtkButton *button, gpointer user_data) {
 	gtk_widget_set_size_request(btn_export, 150, 42);
 	gtk_box_pack_start(GTK_BOX(button_row), btn_export, TRUE, TRUE, 0);
 
-	// --------------------
 	// Controls row: FPS + Scale
-	// --------------------
-	GtkWidget *controls_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 35); // spacing 35px
+	GtkWidget *controls_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 35);
 	gtk_widget_set_name(controls_row, "controls-row");
-	gtk_widget_set_size_request(controls_row, 400, 50); // modal width, row height
+	gtk_widget_set_size_request(controls_row, 400, 50);
 	gtk_box_pack_end(GTK_BOX(black_box), controls_row, FALSE, FALSE, 5);
 
 	// FPS spin button
 	GtkWidget *fps_spin = gtk_spin_button_new_with_range(1, 60, 1);
 	gtk_spin_button_set_value(GTK_SPIN_BUTTON(fps_spin), 25);
 	gtk_widget_set_name(controls_row, "spin-button");
-	gtk_widget_set_size_request(fps_spin, 150, 42); // fixed size
+	gtk_widget_set_size_request(fps_spin, 150, 42);
 	gtk_box_pack_start(GTK_BOX(controls_row), fps_spin, TRUE, TRUE, 0);
 
 	// Scale combo box
@@ -94,13 +78,11 @@ void on_load_button_clicked(GtkButton *button, gpointer user_data) {
 	gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(scale_combo), "720p");
 	gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(scale_combo), "480p");
 	gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(scale_combo), "360p");
-	gtk_combo_box_set_active(GTK_COMBO_BOX(scale_combo), 2); // default 480p
-	gtk_widget_set_size_request(scale_combo, 150, 42); // fixed size
+	gtk_combo_box_set_active(GTK_COMBO_BOX(scale_combo), 2);
+	gtk_widget_set_size_request(scale_combo, 150, 42);
 	gtk_box_pack_start(GTK_BOX(controls_row), scale_combo, TRUE, TRUE, 0);
 	
-	// --------------------
 	// Export progress bar
-	// --------------------
 	GtkWidget *progress_bar = gtk_progress_bar_new();
 	gtk_widget_set_name(progress_bar, "export-progress");
 	gtk_widget_set_size_request(progress_bar, 360, 20);
@@ -109,42 +91,35 @@ void on_load_button_clicked(GtkButton *button, gpointer user_data) {
 	gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(progress_bar), 0.0);
 	gtk_progress_bar_set_show_text(GTK_PROGRESS_BAR(progress_bar), TRUE);
 	gtk_progress_bar_set_text(GTK_PROGRESS_BAR(progress_bar), "0%");
-
-	// Pack it ABOVE the controls row
 	gtk_box_pack_end(GTK_BOX(black_box), progress_bar, FALSE, FALSE, 10);
-
-	// Allocate heap memory for widgets array
-	GtkWidget **widgets = g_malloc(sizeof(GtkWidget*) * 5); // add progress bar
-	widgets[0] = selected_file_label;
-	widgets[1] = fps_spin;
-	widgets[2] = scale_combo;
-	widgets[3] = GINT_TO_POINTER(layer_number);
-	widgets[4] = progress_bar;
 	
-	g_print("[LOAD_BUTTON] layer_number=%d\n", layer_number);
+	// Kind of context we send
+	ExportContext *ctx = g_malloc(sizeof(ExportContext));
+	ctx->file_label = selected_file_label;
+	ctx->fps_spin = GTK_SPIN_BUTTON(fps_spin);
+	ctx->scale_combo = GTK_COMBO_BOX_TEXT(scale_combo);
+	ctx->layer_index = layer_index;
+	ctx->progress_bar = progress_bar;
 
-
-	
+	// Signals
+	g_signal_connect(black_box, "drag-data-received",G_CALLBACK(on_drag_data_received), selected_file_label);
 	g_signal_connect(btn_cancel, "clicked", G_CALLBACK(on_modal_cancel_clicked), global_modal_layer);
-	g_signal_connect(btn_export, "clicked", G_CALLBACK(on_export_clicked), widgets); // widgets array
+	g_signal_connect(btn_export, "clicked", G_CALLBACK(on_export_clicked), ctx);
 
 	gtk_container_add(GTK_CONTAINER(global_modal_layer), black_box);
-
+	g_free(ctx);
 	gtk_widget_show_all(global_modal_layer);
 }
 
 
 void on_export_clicked(GtkButton *button, gpointer user_data) {
-    GtkWidget **widgets = (GtkWidget **)user_data;
+    ExportContext *ctx = (ExportContext *)user_data;
 
-    const gchar *filename = gtk_label_get_text(GTK_LABEL(widgets[0]));
-    int fps = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(widgets[1]));
-    const gchar *scale_text = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(widgets[2]));
-    int layer_number = GPOINTER_TO_INT(widgets[3]);
-    GtkWidget *progress_bar = widgets[4];
-
-    // Debug print
-    g_print("[EXPORT_CLICK] layer_number = %d\n", layer_number);
+    const gchar *filename = gtk_label_get_text(GTK_LABEL(ctx->file_label));
+    int fps = gtk_spin_button_get_value_as_int(ctx->fps_spin);
+    const gchar *scale_text = gtk_combo_box_text_get_active_text(ctx->scale_combo);
+    guint8 layer_index = ctx->layer_index;
+    GtkWidget *progress_bar = ctx->progress_bar;
 
     // Determine scale width
     int scale_width = 854; // default 480p
@@ -153,18 +128,18 @@ void on_export_clicked(GtkButton *button, gpointer user_data) {
     else if (g_strcmp0(scale_text, "480p") == 0) scale_width = 854;
     else if (g_strcmp0(scale_text, "360p") == 0) scale_width = 640;
 
-    // Folder name
-    char folder[256];
-    snprintf(folder, sizeof(folder), "Frames_%d", layer_number);
+	// Folder name for exported frames
+	char folder[64];
+	g_snprintf(folder, sizeof(folder), "Frames_%d", layer_index);
 
-    // Create heap-allocated job
-    ExportJob *job = g_malloc(sizeof(ExportJob));
-    strncpy(job->filename, filename, sizeof(job->filename));
-    job->fps = fps;
-    job->scale_width = scale_width;
-    strncpy(job->folder, folder, sizeof(job->folder));
-    job->progress_bar = progress_bar;
-    job->layer_number = layer_number;
+	// Create heap-allocated export context
+	ExportContext *ctx = g_malloc(sizeof(ExportContext));
+	ctx->filename = g_strdup(filename);
+	ctx->fps = fps;
+	ctx->scale_width = scale_width;
+	ctx->folder = g_strdup(folder);
+	ctx->progress_bar = progress_bar;
+	ctx->layer_index = layer_index;
 
     // Start thread
     g_thread_new("export-thread", export_thread_func, job);

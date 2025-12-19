@@ -4,12 +4,12 @@
 #include "sdl.h"
 #include "modal_load.h"
 
-
+// Globals
 GtkWidget *layer_preview_boxes[MAX_LAYERS] = { NULL };
 
-GtkWidget* create_layer_component(const char *label_text, int layer_number) {
+GtkWidget* create_layer_component(guint8 layer_index) {
 
-	// Overlay wrapper
+	// Overlay wrapper useless for now but in case
 	GtkWidget *overlay = gtk_overlay_new();
 	gtk_widget_set_vexpand(overlay, FALSE);
 	gtk_widget_set_valign(overlay, GTK_ALIGN_START);
@@ -31,7 +31,9 @@ GtkWidget* create_layer_component(const char *label_text, int layer_number) {
 	gtk_box_pack_start(GTK_BOX(layer_hbox), left_vbox, FALSE, FALSE, 0);
 
 	// Label
-	GtkWidget *header_label = gtk_label_new(label_text);
+	char label_buf[32];
+	g_snprintf(label_buf, sizeof(label_buf), "LAYER %u", layer_index + 1);
+	GtkWidget *header_label = gtk_label_new(label_buf);
 	gtk_widget_set_name(header_label, "layer-header");
 	gtk_widget_set_halign(header_label, GTK_ALIGN_START);
 	gtk_box_pack_start(GTK_BOX(left_vbox), header_label, FALSE, FALSE, 0);
@@ -52,19 +54,23 @@ GtkWidget* create_layer_component(const char *label_text, int layer_number) {
 	gtk_widget_set_size_request(preview_box, 130, -1);
 	gtk_box_pack_start(GTK_BOX(layer_hbox), preview_box, FALSE, FALSE, 6);
 
-	if (layer_number >= 0 && layer_number <= MAX_LAYERS) {
-	layer_preview_boxes[layer_number] = preview_box;
+	if (layer_index >= 0 && layer_index <= MAX_LAYERS) {
+		layer_preview_boxes[layer_index] = preview_box;
 	}
 
-	if (is_frames_file_empty(layer_number)) {
-	GtkWidget *preview_label = gtk_label_new("(EMPTY)");
-	gtk_widget_set_name(preview_label, "preview-label");
-	gtk_widget_set_halign(preview_label, GTK_ALIGN_CENTER);
-	gtk_widget_set_valign(preview_label, GTK_ALIGN_CENTER);
-	gtk_container_add(GTK_CONTAINER(preview_box), preview_label);
+	char folder_name[128];
+	snprintf(folder_name, sizeof(folder_name), "Frames_%u", layer_index);
+
+	// Only add "(EMPTY)" label if no frames exist
+	if (count_frames(folder_name) == 0) {
+		GtkWidget *preview_label = gtk_label_new("(EMPTY)");
+		gtk_widget_set_name(preview_label, "preview-label");
+		gtk_widget_set_halign(preview_label, GTK_ALIGN_CENTER);
+		gtk_widget_set_valign(preview_label, GTK_ALIGN_CENTER);
+		gtk_container_add(GTK_CONTAINER(preview_box), preview_label);
 	}
 
-	// Small menu label in overlay
+	// Small menu label in overlay (not implemented now)
 	GtkWidget *menu_label = gtk_label_new("⋮");
 	gtk_widget_set_name(menu_label, "layer-menu-btn");
 	gtk_label_set_xalign(GTK_LABEL(menu_label), 0.5);
@@ -79,52 +85,70 @@ GtkWidget* create_layer_component(const char *label_text, int layer_number) {
 	gtk_overlay_add_overlay(GTK_OVERLAY(overlay), menu_box);
 
 	// Connect signals
-	g_signal_connect(btn_load, "clicked", G_CALLBACK(on_load_button_clicked), GINT_TO_POINTER(layer_number));
-	g_signal_connect(btn_fx, "clicked", G_CALLBACK(on_fx_button_clicked), GINT_TO_POINTER(layer_number));
+	g_signal_connect(btn_load, "clicked", G_CALLBACK(on_load_button_clicked), GINT_TO_POINTER(layer_index));
+	//g_signal_connect(btn_fx, "clicked", G_CALLBACK(on_fx_button_clicked), GINT_TO_POINTER(layer_index));
 	g_signal_connect(menu_box, "button-press-event", G_CALLBACK(on_layer_menu_label_click), NULL);
 
 	return overlay;
 }
 
-void update_layer_preview(int layer_number)
+void set_preview_thumbnail(guint8 layer_index)
 {
-    GtkWidget *preview_box = layer_preview_boxes[layer_number];
+    if (layer_index >= MAX_LAYERS) {
+        g_warning("set_preview_thumbnail: invalid layer_index %d", layer_index);
+        return;
+    }
+
+    GtkWidget *preview_box = layer_preview_boxes[layer_index];
     if (!preview_box) {
-        g_warning("update_layer_preview: preview_box is NULL for layer %d", layer_number);
+        g_warning("set_preview_thumbnail: preview_box is NULL for layer %d", layer_index);
         return;
     }
 
+    // Clear previous children
+    GList *children = gtk_container_get_children(GTK_CONTAINER(preview_box));
+    for (GList *l = children; l; l = l->next) {
+        gtk_widget_destroy(GTK_WIDGET(l->data));
+    }
+    g_list_free(children);
+
+    char folder[128];
+    snprintf(folder, sizeof(folder), "Frames_%u", layer_index);
+
+    // Check if folder has frames
+    if (count_frames(folder) == 0) {
+        GtkWidget *empty_label = gtk_label_new("(EMPTY)");
+        gtk_widget_set_name(empty_label, "preview-label");
+        gtk_widget_set_halign(empty_label, GTK_ALIGN_CENTER);
+        gtk_widget_set_valign(empty_label, GTK_ALIGN_CENTER);
+        gtk_container_add(GTK_CONTAINER(preview_box), empty_label);
+        gtk_widget_show_all(preview_box);
+        return;
+    }
+
+    // First frame path
     char frame_path[512];
-    snprintf(frame_path, sizeof(frame_path),
-             "Frames_%d/frame_00001.png", layer_number);
+    snprintf(frame_path, sizeof(frame_path), "%s/frame_00001.png", folder);
 
-    if (!g_file_test(frame_path, G_FILE_TEST_EXISTS)) {
-        g_warning("update_layer_preview: file does NOT exist: %s", frame_path);
+    gchar *abs_path = g_strdup(frame_path);
+    if (!g_path_is_absolute(frame_path)) {
+        gchar *cwd = g_get_current_dir();
+        gchar *tmp = g_build_filename(cwd, frame_path, NULL);
+        g_free(abs_path);
+        abs_path = tmp;
+        g_free(cwd);
+    }
+
+    // Convert to URI
+    gchar *uri = g_filename_to_uri(abs_path, NULL, NULL);
+    g_free(abs_path);
+    if (!uri) {
+        g_warning("set_preview_thumbnail: failed to convert path to URI");
         return;
     }
 
-    // Ensure widget has the correct name for CSS selector
+    // Apply CSS
     gtk_widget_set_name(preview_box, "sequence-preview-css");
-
-	// Build absolute path first
-	gchar *abs_path = g_strdup(frame_path);
-	if (!g_path_is_absolute(frame_path)) {
-	    gchar *cwd = g_get_current_dir();
-	    abs_path = g_build_filename(cwd, frame_path, NULL);
-	    g_free(cwd);
-	}
-
-	// Convert to URI
-	gchar *uri = g_filename_to_uri(abs_path, NULL, NULL);
-	g_free(abs_path);
-
-	if (!uri) {
-	    g_warning("update_layer_preview: failed to convert path to URI");
-	    return;
-	}
-
-
-    // Build CSS
     gchar *css = g_strdup_printf(
         "#sequence-preview-css {"
         "  background-image: url('%s');"
@@ -135,7 +159,6 @@ void update_layer_preview(int layer_number)
         uri
     );
 
-    // Apply CSS
     GtkCssProvider *provider = gtk_css_provider_new();
     gtk_css_provider_load_from_data(provider, css, -1, NULL);
 
@@ -146,34 +169,12 @@ void update_layer_preview(int layer_number)
         GTK_STYLE_PROVIDER_PRIORITY_USER
     );
 
-    g_message("update_layer_preview: CSS background set for layer %d", layer_number);
-
     // Cleanup
     g_free(uri);
     g_free(css);
     g_object_unref(provider);
-}
 
-gboolean update_preview_idle(gpointer data) {
-    int layer_number = GPOINTER_TO_INT(data);
-    g_print("[UPDATE PREVIEW] called for layer %d\n", layer_number);
-
-    GtkWidget *preview_box = layer_preview_boxes[layer_number];
-    if (!preview_box) {
-        g_warning("update_preview_idle: preview_box is NULL for layer %d", layer_number);
-        return FALSE;
-    }
-
-    // Clear previous children (this will remove "(EMPTY)" label if present)
-    GList *children = gtk_container_get_children(GTK_CONTAINER(preview_box));
-    for (GList *l = children; l; l = l->next)
-        gtk_widget_destroy(GTK_WIDGET(l->data));
-    g_list_free(children);
-
-    // Now call the real update
-    update_layer_preview(layer_number);
-
-    return FALSE; // remove from idle
+    gtk_widget_show_all(preview_box);
 }
 
 gboolean on_layer_menu_label_click(GtkWidget *widget, GdkEventButton *event, gpointer user_data) {

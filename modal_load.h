@@ -13,13 +13,12 @@ typedef struct {
 } ProgressUpdate;
 
 typedef struct {
-    char filename[512];
-    int fps;
-    int scale_width;
-    char folder[256];
-    int layer_number;
+    GtkWidget *file_label;
+    GtkSpinButton *fps_spin;
+    GtkComboBoxText *scale_combo;
+    guint8 layer_index;
     GtkWidget *progress_bar;
-} ExportJob;
+} ExportContext;
 
 void on_load_button_clicked(GtkButton *button, gpointer user_data);
 void on_export_clicked(GtkButton *button, gpointer user_data);

@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include <sys/stat.h>
 #include <dirent.h>
+#include "utils.h"
 
 #include <pthread.h>
 
@@ -125,20 +126,6 @@ void sdl_restart(GtkWidget *widget) {
     }
 
     sdl_embed_in_gtk(widget);
-}
-
-
-// Count frames in folder
-static int count_frames(const char *folder) {
-    DIR *d = opendir(folder);
-    if (!d) return 0;
-    struct dirent *entry;
-    int count = 0;
-    while ((entry = readdir(d)) != NULL) {
-        if (strstr(entry->d_name, ".png")) count++;
-    }
-    closedir(d);
-    return count;
 }
 
 // Frame tracking (what frame we start)

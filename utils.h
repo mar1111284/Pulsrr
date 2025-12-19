@@ -46,8 +46,8 @@ typedef enum {
     DAD_NO_VALID_FILES
 } DragErrorCode;
 
-gboolean is_frames_file_empty(int layer_number);
-
+void log_error(const char *msg, GError *err);
+int count_frames(const char *folder);
 
 
 /**

@@ -14,36 +14,26 @@ static gboolean close_modal_cb(gpointer data) {
 }
 */
 
-gboolean is_frames_file_empty(int layer_number)
-{
-    char folder_path[512];
-    snprintf(folder_path, sizeof(folder_path), "Frames_%d", layer_number);
-
-    DIR *dir = opendir(folder_path);
-    if (!dir) {
-        // Folder does not exist
-        return TRUE;
-    }
-
+// Count frames in folder
+int count_frames(const char *folder) {
+    DIR *d = opendir(folder);
+    if (!d) return 0;
     struct dirent *entry;
-    gboolean has_frame = FALSE;
-
-    while ((entry = readdir(dir)) != NULL) {
-        // Skip . and ..
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
-            continue;
-
-        // Check if filename starts with "frame_" and ends with ".png"
-        if (g_str_has_prefix(entry->d_name, "frame_") &&
-            g_str_has_suffix(entry->d_name, ".png")) {
-            has_frame = TRUE;
-            break;
-        }
+    int count = 0;
+    while ((entry = readdir(d)) != NULL) {
+        if (strstr(entry->d_name, ".png")) count++;
     }
+    closedir(d);
+    return count;
+}
 
-    closedir(dir);
-
-    return !has_frame; // TRUE if empty
+void log_error(const char *msg, GError *err) {
+    if (err) {
+        g_printerr("%s: %s\n", msg, err->message);
+        g_clear_error(&err);
+    } else {
+        g_printerr("%s\n", msg);
+    }
 }
 
 // Returns the number of sequence folders inside "sequences/"
