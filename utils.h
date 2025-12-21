@@ -48,8 +48,13 @@ typedef enum {
 
 void log_error(const char *msg, GError *err);
 int count_frames(const char *folder);
+gchar* get_filesize(const gchar *file_path);
+gchar* get_duration(const gchar *file_path);
+gchar* get_fps(const gchar *file_path);
+gchar* get_resolution(const gchar *file_path);
 
-
+guint get_duration_in_seconds(const gchar *file_path);
+int get_width_from_resolution(const gchar *res);
 /**
  * Check if a filename has the ".mp4" extension (case-insensitive).
  *
@@ -62,8 +67,6 @@ static inline gboolean is_mp4_file(const char *name) {
     g_free(lower);
     return result;
 }
-
-void on_drag_data_received(GtkWidget *widget,GdkDragContext *context,gint x, gint y,GtkSelectionData *data,guint info, guint time,gpointer user_data);
 
 void cleanup_frames_folders(void);
 int get_number_of_sequences(void);

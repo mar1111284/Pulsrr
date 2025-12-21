@@ -94,6 +94,9 @@ GtkWidget* create_layer_component(guint8 layer_index) {
 
 void set_preview_thumbnail(guint8 layer_index)
 {
+
+	g_print("[DEBUG] set_preview_thumbnail called with layer_index=%u\n", layer_index);
+
     if (layer_index >= MAX_LAYERS) {
         g_warning("set_preview_thumbnail: invalid layer_index %d", layer_index);
         return;
@@ -113,7 +116,7 @@ void set_preview_thumbnail(guint8 layer_index)
     g_list_free(children);
 
     char folder[128];
-    snprintf(folder, sizeof(folder), "Frames_%u", layer_index);
+    snprintf(folder, sizeof(folder), "Frames_%u", layer_index+1);
 
     // Check if folder has frames
     if (count_frames(folder) == 0) {
