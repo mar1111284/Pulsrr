@@ -3,11 +3,12 @@
 
 #include <gtk/gtk.h>
 #include "utils.h"
-#include "layer.h"  // for set_transparency, set_gray, set_layer_speed, is_layer_gray
-#include "sdl.h"    // for sdl_set_playing
+#include "layer.h"
+#include "sdl.h"    
+#include "sdl_utilities.h"  
 
 typedef struct {
-    int layer_number;  	
+    guint8 layer_index;  	
     GtkSpinButton *speed_spin;
     GtkSpinButton *alpha_spin;
     GtkSpinButton *threshold_spin;

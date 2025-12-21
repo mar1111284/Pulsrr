@@ -9,6 +9,8 @@
 #include "aphorism.h"
 #include "sequencer.h"
 #include "screen_panel.h"
+#include "sdl_utilities.h"
+#include "modal_add_sequence.h"
 
 // Global
 SelectedBar selected_bar = BAR_NONE;
@@ -176,6 +178,7 @@ int main(int argc, char *argv[])
 
     // Signals
     g_signal_connect(btn_update, "clicked",G_CALLBACK(on_update_render_clicked), render_panel);
+    g_signal_connect(btn_create, "clicked",G_CALLBACK(on_add_button_clicked),NULL);
 
     gtk_widget_add_events(win, GDK_KEY_PRESS_MASK);
     g_signal_connect(win, "key-press-event",G_CALLBACK(on_key_press), NULL);

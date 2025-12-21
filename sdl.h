@@ -17,21 +17,15 @@ typedef enum {
     LAYER_MODIFIED
 } LayerState;
 
-// Declare globals as extern
-extern RenderState render_state;
-extern LayerState layer_state[4];
+// GLobal
+extern SDL_Renderer *renderer;
+extern double layer_speed[4];
+extern Uint8 layer_alpha[4];
+extern Uint8 layer_gray[4];
 extern int is_playing;
-
-// Static inline setters/getters
-static inline void sdl_set_loading(void)  { render_state = RENDER_STATE_LOADING; }
-static inline void sdl_set_ready(void)    { render_state = RENDER_STATE_READY; }
-static inline void sdl_set_playing(int p) { is_playing = p ? 1 : 0; }
-static inline int  sdl_is_playing(void)   { return is_playing; }
-
-void set_layer_modified(int layer_number);
-
-void set_layer_speed(int layer_index, double speed);
-double get_layer_speed(int layer_index);
+extern LayerState layer_state[4];
+extern RenderState render_state;
+extern SDL_Window   *sdl_win;
 
 RenderState get_render_state(void);
 
@@ -44,16 +38,13 @@ int  sdl_embed_in_gtk(GtkWidget *widget);
 void sdl_draw_frame(void);
 void sdl_free_textures(void);
 void sdl_restart(GtkWidget *widget);
-// Set the alpha transparency for a given layer (1–4)
-void set_transparency(int layer_number, int alpha);
-void set_gray(int layer_number, int gray);
+
+void set_transparency(guint8 layer_index, int alpha);
+int get_transparency(guint8 layer_index);
+
+void set_gray(guint8 layer_index, int gray);
 int is_layer_gray(int layer_number);
 void sdl_update_textures();
-
-
-/* --- playback control --- */
-void sdl_set_playing(int playing);
-int  sdl_is_playing(void);
 
 #endif
 

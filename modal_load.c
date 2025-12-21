@@ -65,7 +65,7 @@ static inline gboolean export_done_cb(gpointer data) {
     ExportContext *ctx = (ExportContext *)data;
     gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(ctx->progress_bar), 1.0);
     gtk_progress_bar_set_text(GTK_PROGRESS_BAR(ctx->progress_bar), "Export completed");
-    set_layer_modified(ctx->layer_index + 1);
+    set_layer_modified(ctx->layer_index);
     sdl_set_playing(1);
     return G_SOURCE_REMOVE;
 }
@@ -275,12 +275,7 @@ void on_load_button_clicked(GtkButton *button, gpointer user_data) {
 	video_info->progress_bar = progress_bar;
 
 	// Connect drag-and-drop signal on the black box
-	g_signal_connect(
-		black_box,
-		"drag-data-received",
-		G_CALLBACK(on_drag_data_received),
-		video_info
-	);
+	g_signal_connect(black_box,"drag-data-received",G_CALLBACK(on_drag_data_received),video_info);
 
 	// We send the ui context to the export function
 	ExportUIContext *ui = g_malloc(sizeof *ui);

@@ -6,6 +6,7 @@
 #include <time.h>
 #include <glib/gstdio.h>
 #include "sdl.h"
+#include "sdl_utilities.h"
 
 /*
 static gboolean close_modal_cb(gpointer data) {

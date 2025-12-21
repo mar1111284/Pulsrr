@@ -1,6 +1,7 @@
 #include "utils.h"
 #include "sdl.h"
 #include "screen_panel.h"
+#include "sdl_utilities.h"
 
 void on_drawarea_map(GtkWidget *widget, gpointer data)
 {

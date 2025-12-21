@@ -6,6 +6,7 @@
 #include "utils.h"
 #include "sdl.h"
 #include "layer.h"
+#include "sdl_utilities.h"
 
 // --------------------
 // UI data structures

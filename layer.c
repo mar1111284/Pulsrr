@@ -86,7 +86,7 @@ GtkWidget* create_layer_component(guint8 layer_index) {
 
 	// Connect signals
 	g_signal_connect(btn_load, "clicked", G_CALLBACK(on_load_button_clicked), GINT_TO_POINTER(layer_index));
-	//g_signal_connect(btn_fx, "clicked", G_CALLBACK(on_fx_button_clicked), GINT_TO_POINTER(layer_index));
+	g_signal_connect(btn_fx, "clicked", G_CALLBACK(on_fx_button_clicked), GINT_TO_POINTER(layer_index));
 	g_signal_connect(menu_box, "button-press-event", G_CALLBACK(on_layer_menu_label_click), NULL);
 
 	return overlay;
