@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <time.h>
 #include <glib/gstdio.h>
+#include "sdl.h"
 
 /*
 static gboolean close_modal_cb(gpointer data) {
@@ -17,6 +18,23 @@ static gboolean close_modal_cb(gpointer data) {
 #include <glib.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+void on_modal_back_clicked(GtkButton *button, gpointer user_data) {
+    GtkWidget *modal_layer = GTK_WIDGET(user_data);
+
+    gtk_widget_hide(modal_layer);
+
+    // Remove modal if there is
+    GList *children = gtk_container_get_children(GTK_CONTAINER(modal_layer));
+    for (GList *l = children; l != NULL; l = l->next) {
+        gtk_widget_destroy(GTK_WIDGET(l->data));
+    }
+    
+    // Render play
+    sdl_set_playing(1);
+    
+    g_list_free(children);
+}
 
 guint get_duration_in_seconds(const gchar *file_path)
 {

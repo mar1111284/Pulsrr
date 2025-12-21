@@ -55,6 +55,8 @@ gchar* get_resolution(const gchar *file_path);
 
 guint get_duration_in_seconds(const gchar *file_path);
 int get_width_from_resolution(const gchar *res);
+
+void on_modal_back_clicked(GtkButton *button, gpointer user_data);
 /**
  * Check if a filename has the ".mp4" extension (case-insensitive).
  *

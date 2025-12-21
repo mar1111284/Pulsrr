@@ -1,5 +1,60 @@
 #include "modal_load.h"
 
+guint estimation_timeout_id = 0;
+
+gboolean debounce_update_estimation(gpointer user_data) {
+    VideoInfoLabels *labels = (VideoInfoLabels *)user_data;
+    update_export_estimation(labels);
+    estimation_timeout_id = 0;
+    return G_SOURCE_REMOVE;
+}
+
+void update_export_estimation(VideoInfoLabels *labels)
+{
+    const gchar *filename = gtk_label_get_text(labels->filename);
+    if (!filename || !*filename)
+        return;
+
+    guint fps = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(labels->fps_spin));
+    guint dur_seconds = get_duration_in_seconds(filename);
+    guint est_frames = fps * dur_seconds;
+
+    gchar buf[32];
+    g_snprintf(buf, sizeof(buf), "%u", est_frames);
+    gtk_label_set_text(labels->estimated_frames_nb, buf);
+
+    const gchar *scale_text = gtk_combo_box_text_get_active_text(labels->scale_combo); // Parse scale to width
+
+    int export_width = 854; // default 480p
+    if (g_strcmp0(scale_text, "1080p") == 0) export_width = 1920;
+    else if (g_strcmp0(scale_text, "720p") == 0) export_width = 1280;
+    else if (g_strcmp0(scale_text, "360p") == 0) export_width = 640;
+
+    // Original resolution
+    gchar *res_str = get_resolution(filename);
+    int orig_w = 0, orig_h = 0;
+
+    if (res_str && sscanf(res_str, "%d x %d", &orig_w, &orig_h) == 2) {
+        // ok
+    } else {
+        orig_w = export_width;
+        orig_h = (int)(export_width * 9.0 / 16.0);
+    }
+    g_free(res_str);
+
+    // Preserve aspect ratio
+    int export_h = (int)((double)export_width * orig_h / orig_w);
+
+    // Size estimate
+    gdouble bytes_per_frame = export_width * export_h * 0.7;
+    gdouble total_mb =
+        (bytes_per_frame * est_frames) / (1024.0 * 1024.0);
+
+    gchar size_buf[32];
+    g_snprintf(size_buf, sizeof(size_buf), "%.2f MB", total_mb);
+    gtk_label_set_text(labels->estimated_size, size_buf);
+}
+
 static gboolean idle_set_preview_thumbnail(gpointer user_data) {
     guint8 layer = GPOINTER_TO_UINT(user_data);
     set_preview_thumbnail(layer);
@@ -12,7 +67,6 @@ static inline gboolean export_done_cb(gpointer data) {
     gtk_progress_bar_set_text(GTK_PROGRESS_BAR(ctx->progress_bar), "Export completed");
     set_layer_modified(ctx->layer_index + 1);
     sdl_set_playing(1);
-    //g_timeout_add_seconds(2, close_modal_cb, global_modal_layer);
     return G_SOURCE_REMOVE;
 }
 
@@ -39,7 +93,7 @@ void on_load_button_clicked(GtkButton *button, gpointer user_data) {
 	// Drag and drop label
 	GtkWidget *file_path = gtk_label_new("Drag an MP4 file here");
 	gtk_widget_set_name(file_path, "selected-file-label");
-	gtk_label_set_ellipsize(GTK_LABEL(file_path), PANGO_ELLIPSIZE_END); // show "..." at the end
+	gtk_label_set_ellipsize(GTK_LABEL(file_path), PANGO_ELLIPSIZE_END);
 	gtk_label_set_max_width_chars(GTK_LABEL(file_path), 40);
 	gtk_label_set_line_wrap(GTK_LABEL(file_path), TRUE);
 	gtk_widget_set_size_request(file_path, 360, -1);
@@ -50,62 +104,10 @@ void on_load_button_clicked(GtkButton *button, gpointer user_data) {
 	{ "text/uri-list", 0, 0 }
 	};
 	gtk_drag_dest_set(GTK_WIDGET(black_box),GTK_DEST_DEFAULT_ALL,targets,G_N_ELEMENTS(targets),GDK_ACTION_COPY);
-
-	// Button row (Cancel + Export)
-	GtkWidget *button_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 35);
-	gtk_widget_set_name(button_row, "button-row");
-	gtk_widget_set_size_request(button_row, 400, 50);
-	gtk_box_pack_end(GTK_BOX(black_box), button_row, FALSE, FALSE, 0);
-
-	// Cancel button
-	GtkWidget *btn_cancel = gtk_button_new_with_label("BACK");
-	gtk_widget_set_name(btn_cancel, "modal-cancel-button");
-	gtk_widget_set_size_request(btn_cancel, 150, 42);
-	gtk_box_pack_start(GTK_BOX(button_row), btn_cancel, TRUE, TRUE, 0);
-
-	// Export button
-	GtkWidget *btn_export = gtk_button_new_with_label("EXPORT");
-	gtk_widget_set_name(btn_export, "modal-export-button");
-	gtk_widget_set_size_request(btn_export, 150, 42);
-	gtk_box_pack_start(GTK_BOX(button_row), btn_export, TRUE, TRUE, 0);
-
-	// Controls row: FPS + Scale
-	GtkWidget *controls_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 35);
-	gtk_widget_set_name(controls_row, "controls-row");
-	gtk_widget_set_size_request(controls_row, 400, 50);
-	gtk_box_pack_end(GTK_BOX(black_box), controls_row, FALSE, FALSE, 5);
-
-	// FPS spin button
-	GtkWidget *fps_spin = gtk_spin_button_new_with_range(1, 60, 1);
-	gtk_spin_button_set_value(GTK_SPIN_BUTTON(fps_spin), 25);
-	gtk_widget_set_name(controls_row, "spin-button");
-	gtk_widget_set_size_request(fps_spin, 150, 42);
-	gtk_box_pack_start(GTK_BOX(controls_row), fps_spin, TRUE, TRUE, 0);
-
-	// Scale combo box
-	GtkWidget *scale_combo = gtk_combo_box_text_new();
-	gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(scale_combo), "1080p");
-	gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(scale_combo), "720p");
-	gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(scale_combo), "480p");
-	gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(scale_combo), "360p");
-	gtk_combo_box_set_active(GTK_COMBO_BOX(scale_combo), 2);
-	gtk_widget_set_size_request(scale_combo, 150, 42);
-	gtk_box_pack_start(GTK_BOX(controls_row), scale_combo, TRUE, TRUE, 0);
 	
-	// Export progress bar
-	GtkWidget *progress_bar = gtk_progress_bar_new();
-	gtk_widget_set_name(progress_bar, "export-progress");
-	gtk_widget_set_size_request(progress_bar, 360, 20);
-	
-	// Initial state of progress bar
-	gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(progress_bar), 0.0);
-	gtk_progress_bar_set_show_text(GTK_PROGRESS_BAR(progress_bar), TRUE);
-	gtk_progress_bar_set_text(GTK_PROGRESS_BAR(progress_bar), "0%");
-	gtk_box_pack_end(GTK_BOX(black_box), progress_bar, FALSE, FALSE, 10);
-	
-	// Container for video info (under drag-and-drop label)
-	GtkWidget *info_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 20); // spacing between columns
-
+	// Video Info container
+	GtkWidget *info_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL,30); 
+	    
 	// Left column & right column
 	GtkWidget *col1 = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5); // spacing between rows
 	gtk_box_pack_start(GTK_BOX(info_box), col1, TRUE, TRUE, 0);
@@ -154,18 +156,17 @@ void on_load_button_clicked(GtkButton *button, gpointer user_data) {
 
 	// Pack info_box under the drag-and-drop label
 	gtk_box_pack_start(GTK_BOX(black_box), info_box, FALSE, FALSE, 10);
-	
-	// Container for export estimates (under video info)
-	GtkWidget *estimates_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5); // vertical spacing
 
-	// Header row: "Estimation:"
+	// Container for export estimates (under video info)
+	GtkWidget *estimates_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+
 	GtkWidget *header_label = gtk_label_new("Estimation:");
 	gtk_widget_set_halign(header_label, GTK_ALIGN_START);
-	gtk_widget_set_name(header_label, "estimation-header"); // optional CSS
+	gtk_widget_set_name(header_label, "estimation-header");
 	gtk_box_pack_start(GTK_BOX(estimates_box), header_label, FALSE, FALSE, 0);
 
 	// Row: Expected frames + Estimated size (same row)
-	GtkWidget *hbox_estimates = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 20); // spacing between two items
+	GtkWidget *hbox_estimates = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 20);
 
 	// Left: Expected frames
 	GtkWidget *frames_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
@@ -194,6 +195,71 @@ void on_load_button_clicked(GtkButton *button, gpointer user_data) {
 
 	// Pack estimates_box under the info_box
 	gtk_box_pack_start(GTK_BOX(black_box), estimates_box, FALSE, FALSE, 10);
+
+	// Button row (Back + Export)
+	GtkWidget *button_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 35);
+	gtk_widget_set_name(button_row, "button-row");
+	gtk_widget_set_size_request(button_row, 400, 50);
+	gtk_box_pack_end(GTK_BOX(black_box), button_row, FALSE, FALSE, 0);
+
+	// Back button
+	GtkWidget *btn_back = gtk_button_new_with_label("BACK");
+	gtk_widget_set_name(btn_back, "modal-cancel-button");
+	gtk_widget_set_size_request(btn_back, 150, 42);
+	gtk_box_pack_start(GTK_BOX(button_row), btn_back, TRUE, TRUE, 0);
+
+	// Export button
+	GtkWidget *btn_export = gtk_button_new_with_label("EXPORT");
+	gtk_widget_set_name(btn_export, "modal-export-button");
+	gtk_widget_set_size_request(btn_export, 150, 42);
+	gtk_box_pack_start(GTK_BOX(button_row), btn_export, TRUE, TRUE, 0);
+
+	// Controls row: FPS + Scale
+	GtkWidget *controls_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 35);
+	gtk_widget_set_name(controls_row, "controls-row");
+	gtk_widget_set_size_request(controls_row, 400, 50);
+	gtk_box_pack_end(GTK_BOX(black_box), controls_row, FALSE, FALSE, 5);
+
+	// FPS spin button
+	GtkWidget *fps_spin = gtk_spin_button_new_with_range(1, 60, 1);
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(fps_spin), 25);
+	gtk_widget_set_name(controls_row, "spin-button");
+	gtk_widget_set_size_request(fps_spin, 150, 42);
+	gtk_box_pack_start(GTK_BOX(controls_row), fps_spin, TRUE, TRUE, 0);
+
+	// Scale combo box
+	GtkWidget *scale_combo = gtk_combo_box_text_new();
+	gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(scale_combo), "1080p");
+	gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(scale_combo), "720p");
+	gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(scale_combo), "480p");
+	gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(scale_combo), "360p");
+	gtk_combo_box_set_active(GTK_COMBO_BOX(scale_combo), 2);
+	gtk_widget_set_size_request(scale_combo, 150, 42);
+	gtk_box_pack_start(GTK_BOX(controls_row), scale_combo, TRUE, TRUE, 0);
+	
+	// Labels row: "FPS" and "Quality"
+	GtkWidget *labels_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 35);
+	gtk_widget_set_size_request(labels_row, 400, 20);
+
+	// FPS & Quality label
+	GtkWidget *fps_label = gtk_label_new("FPS");
+	gtk_widget_set_halign(fps_label, GTK_ALIGN_CENTER);
+	gtk_box_pack_start(GTK_BOX(labels_row), fps_label, TRUE, TRUE, 0);
+	GtkWidget *quality_label = gtk_label_new("Quality");
+	gtk_widget_set_halign(quality_label, GTK_ALIGN_CENTER);
+	gtk_box_pack_start(GTK_BOX(labels_row), quality_label, TRUE, TRUE, 0);
+	gtk_box_pack_end(GTK_BOX(black_box), labels_row, FALSE, FALSE, 0);
+	
+	// Export progress bar
+	GtkWidget *progress_bar = gtk_progress_bar_new();
+	gtk_widget_set_name(progress_bar, "export-progress");
+	gtk_widget_set_size_request(progress_bar, 360, 20);
+	
+	// Initial state of progress bar
+	gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(progress_bar), 0.0);
+	gtk_progress_bar_set_show_text(GTK_PROGRESS_BAR(progress_bar), TRUE);
+	gtk_progress_bar_set_text(GTK_PROGRESS_BAR(progress_bar), "0%");
+	gtk_box_pack_end(GTK_BOX(black_box), progress_bar, FALSE, FALSE, 10);
 	
 	// Allocate and assign the labels to the struct
 	VideoInfoLabels *video_info = g_malloc(sizeof(VideoInfoLabels));
@@ -206,6 +272,7 @@ void on_load_button_clicked(GtkButton *button, gpointer user_data) {
 	video_info->estimated_size      = GTK_LABEL(value_estimated_size);
 	video_info->fps_spin = fps_spin;
 	video_info->scale_combo = GTK_COMBO_BOX_TEXT(scale_combo);
+	video_info->progress_bar = progress_bar;
 
 	// Connect drag-and-drop signal on the black box
 	g_signal_connect(
@@ -215,7 +282,6 @@ void on_load_button_clicked(GtkButton *button, gpointer user_data) {
 		video_info
 	);
 
-	
 	// We send the ui context to the export function
 	ExportUIContext *ui = g_malloc(sizeof *ui);
 	ui->file_label = file_path;
@@ -225,68 +291,32 @@ void on_load_button_clicked(GtkButton *button, gpointer user_data) {
 	ui->layer_index = layer_index;
 
 	// Signals
-	g_signal_connect(fps_spin, "value-changed",
-                 G_CALLBACK(on_fps_spin_changed),
-                 video_info);
+	g_signal_connect(fps_spin, "value-changed",G_CALLBACK(on_fps_spin_changed),video_info);
+    g_signal_connect(scale_combo,"changed",G_CALLBACK(on_scale_combo_changed),video_info);
 
-	g_signal_connect(btn_cancel, "clicked", G_CALLBACK(on_modal_cancel_clicked), global_modal_layer);
+	g_signal_connect(btn_back, "clicked", G_CALLBACK(on_modal_back_clicked), global_modal_layer);
 	g_signal_connect(btn_export, "clicked", G_CALLBACK(on_export_clicked), ui);
 
 	gtk_container_add(GTK_CONTAINER(global_modal_layer), black_box);
 	gtk_widget_show_all(global_modal_layer);
 }
 
-void on_fps_spin_changed(GtkSpinButton *spin, gpointer user_data)
-{
+void on_fps_spin_changed(GtkSpinButton *spin, gpointer user_data) {
     VideoInfoLabels *labels = (VideoInfoLabels *)user_data;
 
-    const gchar *filename = gtk_label_get_text(labels->filename);
-    if (!filename || !*filename)
-        return;
+    if (estimation_timeout_id != 0)
+        g_source_remove(estimation_timeout_id);
 
-    // Read current FPS from spin button
-    guint fps = gtk_spin_button_get_value_as_int(spin);
+    estimation_timeout_id = g_timeout_add(400, debounce_update_estimation, labels);
+}
 
-    // Get video duration in seconds
-    guint dur_seconds = get_duration_in_seconds(filename);
+void on_scale_combo_changed(GtkComboBox *combo, gpointer user_data) {
+    VideoInfoLabels *labels = (VideoInfoLabels *)user_data;
 
-    // Calculate estimated frames
-    guint est_frames = fps * dur_seconds;
-    gchar buf[32];
-    g_snprintf(buf, sizeof(buf), "%u", est_frames);
-    gtk_label_set_text(labels->estimated_frames_nb, buf);
+    if (estimation_timeout_id != 0)
+        g_source_remove(estimation_timeout_id);
 
-    // Get current resolution width from scale combo
-    const gchar *scale_text = gtk_combo_box_text_get_active_text(labels->scale_combo);
-    int export_width = 854; // default 480p
-    if (g_strcmp0(scale_text, "1080p") == 0) export_width = 1920;
-    else if (g_strcmp0(scale_text, "720p") == 0) export_width = 1280;
-    else if (g_strcmp0(scale_text, "480p") == 0) export_width = 854;
-    else if (g_strcmp0(scale_text, "360p") == 0) export_width = 640;
-
-    // Get original video resolution as string "WIDTHxHEIGHT"
-    gchar *res_str = get_resolution(filename);
-    int orig_width = 0, orig_height = 0;
-    if (res_str && g_strstr_len(res_str, -1, "x")) {
-        sscanf(res_str, "%d x %d", &orig_width, &orig_height);
-    } else {
-        g_warning("Failed to parse resolution string: %s", res_str);
-        orig_width = export_width;
-        orig_height = (int)((double)export_width * 9.0 / 16.0); // fallback to 16:9
-    }
-    g_free(res_str);
-
-    // Preserve aspect ratio
-    int export_height = (int)((double)export_width * orig_height / orig_width);
-
-    // Estimate export size (rough PNG estimate)
-    gdouble bytes_per_frame = export_width * export_height * 0.67; // empirical factor
-    gdouble total_bytes = bytes_per_frame * est_frames;
-    gdouble total_mb = total_bytes / (1024.0 * 1024.0);
-
-    gchar size_buf[32];
-    g_snprintf(size_buf, sizeof(size_buf), "%.2f MB", total_mb);
-    gtk_label_set_text(labels->estimated_size, size_buf);
+    estimation_timeout_id = g_timeout_add(400, debounce_update_estimation, labels);
 }
 
 // Drag-and-drop callback
@@ -305,37 +335,33 @@ void on_drag_data_received(GtkWidget *widget,
             gchar *filename = g_filename_from_uri(uris[i], NULL, NULL);
             if (filename) {
                 if (is_mp4_file(filename)) {
-                    g_warning("Dropped MP4 file: %s", filename);
+                	
+                	// Reset progress bar
+                	if (labels->progress_bar) {
+						gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(labels->progress_bar), 0.0);
+						gtk_progress_bar_set_text(GTK_PROGRESS_BAR(labels->progress_bar), "0%");
+					}
                     
-                    // Update file path label
+                    // Update infos
                     gtk_label_set_text(labels->filename, filename);
             
-                    // Update video info labels
-                    gchar *res = get_resolution(filename);  // e.g., "1920x1080"
+                    gchar *res = get_resolution(filename);
                     gtk_label_set_text(labels->resolution, res);
                     g_free(res);
 
-                    gchar *fps = get_fps(filename);         // e.g., "25"
+                    gchar *fps = get_fps(filename);
                     gtk_label_set_text(labels->fps, fps);
                     g_free(fps);
 
-                    gchar *dur = get_duration(filename);    // e.g., "00:03:25"
+                    gchar *dur = get_duration(filename);
                     gtk_label_set_text(labels->duration, dur);
                     g_free(dur);
 
-                    gchar *size = get_filesize(filename);   // e.g., "12.5 MB"
+                    gchar *size = get_filesize(filename);
                     gtk_label_set_text(labels->filesize, size);
                     g_free(size);
 
-                    // Update estimated frames and size
-                    guint fps_spin = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(labels->fps_spin));
-                    guint duration = get_duration_in_seconds(filename);
-                    guint est_frames_nb = fps_spin * duration;
-                    gtk_label_set_text(labels->estimated_frames_nb,g_strdup_printf("%u", est_frames_nb));
-
-                    /*gdouble est_size_mb = get_estimated_export_size(filename, get_width_from_resolution(res));
-                    gtk_label_set_text(labels->estimated_size,
-                                       g_strdup_printf("%.2f MB", est_size_mb));*/
+                    update_export_estimation((VideoInfoLabels *)user_data);
 
                 } else {
                     g_warning("Ignored non-MP4 file: %s", filename);
@@ -348,8 +374,6 @@ void on_drag_data_received(GtkWidget *widget,
 
     gtk_drag_finish(context, TRUE, FALSE, time);
 }
-
-
 
 void on_export_clicked(GtkButton *button, gpointer user_data) {
     ExportUIContext *ui = (ExportUIContext *)user_data;
@@ -372,12 +396,12 @@ void on_export_clicked(GtkButton *button, gpointer user_data) {
     gchar folder[64];
     g_snprintf(folder, sizeof(folder), "Frames_%d", layer_index + 1);
 
-    // Create heap-allocated thread context
+    // Allocated thread context
     ExportContext *th_ctx = g_malloc0(sizeof(ExportContext));
-    th_ctx->file_path = g_strdup(label_text); // copy string
+    th_ctx->file_path = g_strdup(label_text);
     th_ctx->fps = fps;
     th_ctx->resolution = resolution;
-    th_ctx->folder = g_strdup(folder);       // copy string
+    th_ctx->folder = g_strdup(folder);
     th_ctx->progress_bar = progress_bar;
     th_ctx->layer_index = layer_index;
 
@@ -388,20 +412,23 @@ void on_export_clicked(GtkButton *button, gpointer user_data) {
 gpointer export_thread_func(gpointer data) {
     ExportContext *ctx = (ExportContext *)data;
 
-    char line[256];
-    double fraction = 0.0;
+    // Build absolute folder path
+    gchar *folder_abs = g_build_filename(g_get_current_dir(), ctx->folder, NULL);
 
-    // ===== Safe folder cleanup =====
-    if (g_mkdir_with_parents(ctx->folder, 0755) != 0) {
-        g_warning("Failed to create folder: %s", ctx->folder);
+    // Ensure folder exists
+    if (g_mkdir_with_parents(folder_abs, 0755) != 0) {
+        g_warning("Failed to create folder: %s", folder_abs);
+        g_free(folder_abs);
+        return NULL;
     }
 
+    // Clean existing files in folder
     GError *err = NULL;
-    GDir *dir = g_dir_open(ctx->folder, 0, &err);
+    GDir *dir = g_dir_open(folder_abs, 0, &err);
     if (dir) {
         const gchar *name;
         while ((name = g_dir_read_name(dir))) {
-            gchar *path = g_build_filename(ctx->folder, name, NULL);
+            gchar *path = g_build_filename(folder_abs, name, NULL);
             unlink(path);
             g_free(path);
         }
@@ -411,22 +438,34 @@ gpointer export_thread_func(gpointer data) {
         g_error_free(err);
     }
 
-    // ===== Run ffmpeg =====
+    // Total duration in milliseconds
+    guint64 total_ms = get_duration_in_seconds(ctx->file_path) * 1000;
+
+    // FFmpeg command
     char cmd[1024];
     snprintf(cmd, sizeof(cmd),
-             "ffmpeg -i \"%s\" -vf scale=%d:-1,fps=%d \"%s/frame_%%05d.png\" -progress - -nostats",
+             "ffmpeg -i \"%s\" -vf scale=%d:-1,fps=%d \"%s/frame_%%05d.png\" -progress pipe:1 -nostats -loglevel info",
              ctx->file_path,
-             ctx->resolution,   // updated from scale_width
+             ctx->resolution,
              ctx->fps,
-             ctx->folder
+             folder_abs
     );
-
+    
     FILE *pipe = popen(cmd, "r");
-    if (!pipe) return NULL;
+    if (!pipe) {
+        g_warning("Failed to run FFmpeg!");
+        g_free(folder_abs);
+        return NULL;
+    }
 
+    char line[256];
     while (fgets(line, sizeof(line), pipe)) {
-        if (g_str_has_prefix(line, "frame=")) {
-            fraction += 0.01;
+        line[strcspn(line, "\r\n")] = 0; // trim newline
+
+        if (g_str_has_prefix(line, "out_time_ms=")) {
+            guint64 out_ms = 0;
+            sscanf(line + strlen("out_time_ms="), "%lu", &out_ms);
+            double fraction = (double)out_ms / (double)(total_ms * 1000);
             if (fraction > 1.0) fraction = 1.0;
 
             char text[16];
@@ -436,46 +475,28 @@ gpointer export_thread_func(gpointer data) {
             upd->progress_bar = ctx->progress_bar;
             upd->fraction = fraction;
             upd->text = g_strdup(text);
-
             g_idle_add(update_progress_cb, upd);
         }
     }
 
     pclose(pipe);
+    g_free(folder_abs);
 
-    // ===== Final progress update =====
+    // Final progress update
     ProgressUpdate *upd = g_malloc(sizeof(ProgressUpdate));
     upd->progress_bar = ctx->progress_bar;
     upd->fraction = 1.0;
     upd->text = g_strdup("100%");
     g_idle_add(update_progress_cb, upd);
 
-    // ===== Notify UI safely =====
-	g_idle_add(idle_set_preview_thumbnail, GUINT_TO_POINTER(ctx->layer_index));
-
-    // ===== Export done =====
+    // Update thumbnail and mark done
+    g_idle_add(idle_set_preview_thumbnail, GUINT_TO_POINTER(ctx->layer_index));
     g_idle_add(export_done_cb, ctx);
 
     return NULL;
 }
 
 
-void on_modal_cancel_clicked(GtkButton *button, gpointer user_data) {
-    GtkWidget *modal_layer = GTK_WIDGET(user_data);
-
-    gtk_widget_hide(modal_layer);
-
-    // Optional: remove previous modal content
-    GList *children = gtk_container_get_children(GTK_CONTAINER(modal_layer));
-    for (GList *l = children; l != NULL; l = l->next) {
-        gtk_widget_destroy(GTK_WIDGET(l->data));
-    }
-    
-    // Render play
-    sdl_set_playing(1);
-    
-    g_list_free(children);
-}
 
 gboolean update_progress_cb(gpointer data) {
     ProgressUpdate *upd = (ProgressUpdate *)data;
@@ -487,5 +508,5 @@ gboolean update_progress_cb(gpointer data) {
     g_free(upd->text);
     g_free(upd);
 
-    return G_SOURCE_REMOVE; // run once
+    return G_SOURCE_REMOVE;
 }

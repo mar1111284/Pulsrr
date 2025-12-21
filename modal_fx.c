@@ -176,10 +176,7 @@ void on_fx_button_clicked(GtkButton *button, gpointer user_data) {
 	gtk_box_pack_end(GTK_BOX(black_box), button_row, FALSE, FALSE, 10);
 
 	/* Signals */
-	g_signal_connect(btn_back,
-		     "clicked",
-		     G_CALLBACK(on_modal_cancel_clicked),
-		     global_modal_layer);
+	//g_signal_connect(btn_back,"clicked",G_CALLBACK(on_modal_back_clicked),global_modal_layer);
 
 	LayerFxWidgets *fx_widgets = g_malloc(sizeof(LayerFxWidgets));
 	fx_widgets->layer_number = layer_number;  // pass the layer
