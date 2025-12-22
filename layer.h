@@ -3,6 +3,11 @@
 
 #include <gtk/gtk.h>
 
+typedef struct {
+    guint8 layer_index;
+    MainUI *ui;
+} LayerCallbackData;
+
 // Global preview boxes array
 extern GtkWidget *layer_preview_boxes[MAX_LAYERS];
 

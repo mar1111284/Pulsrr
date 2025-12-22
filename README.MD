@@ -1,283 +1,273 @@
-/*
-Notes:
+### Major
+- **Full sequencer implementation**
+  - Timeline logic (start / end / loop)
+  - Playback synchronization
+  - Export pipeline integration
+  - Music handler
+  - Crop, Cut function ?
 
-Architecture:
+### Minor
+- **X11 warning on app start**
+  - Investigate GTK widget realization vs SDL embedding
+  - Ensure SDL starts only after valid XID
 
-Main container: specs: (1200*700); fixed size not expandable; background #FFFFFF
+- **Modal load safety**
+  - Make application insensitive during frame loading
+  - Prevent crashes caused by user interaction during processing
 
-	Left container: specs: (300*700); fixed size not expandable; background #212121
-	
-		App Logo Image: specs: (300*42); fixed size not expandable; Image/logo.png
-		
-		Header box: "Layer 1" specs (300*5); fixed size not expandable; text align left
-		
-		Layer container 1: specs: (300*42); fixed size not expandable;
-		
-			Left container: specs: (50*42);  fixed size not expandable
-				Button Edit
-				Button Effects
-				Button Replace
-				Button Delete
-				
-			Right container: specs: (250*42); fixed size not expandable
-				Image preview; src: empty.png
-		
-		Header box: "Layer 2" specs (300*5); fixed size not expandable; text align left
-				
-		Layer container 2 (idem ...)
-		
-		Header box: "Layer 3" specs (300*5); fixed size not expandable; text align left
+- **Additional video filters**
+  - Threshold
+  - Invert
+  - Extendable filter pipeline
 
-		Layer container 3 (idem ...)
-		
-		Header box: "Layer 4" specs (300*5); fixed size not expandable; text align left
-		
-		Layer container 4 (idem ...)
-		
-		Header box: "Layer 5" specs (300*5); fixed size not expandable; text align left
-		
-		Layer container 5 (idem ...)
+- **SDL loading progress**
+  - Progress bar during frame loading
+  - SDL-side feedback for long load times
 
-	Right container: specs: (900*700); fixed size not expandable; background #FFFFFF
-		
-		SDL container: specs: (900*600); fixed size not expandable;
-		Sequencer container: specs: (900*100); fixed size not expandable;
+- **Project structure cleanup**
+  - Move all source files into `src/`
+  - Fonts into `fonts/`
+  - Assets into dedicated folders
+  - General repository hygiene
 
-*/
+
+main.c
 
 #include <gtk/gtk.h>
 #include <stdlib.h>
+#include <time.h>
 #include <stdio.h>
 
-#define WINDOW_WIDTH   1200
-#define WINDOW_HEIGHT  700
-#define CONTROL_WIDTH  300
-#define SEQ_HEIGHT     150
+#include "sdl.h"
+#include "utils.h"
+#include "layer.h"
+#include "aphorism.h"
+#include "sequencer.h"
+#include "screen_panel.h"
+#include "sdl_utilities.h"
+#include "modal_add_sequence.h"
 
-#define IMAGE_PREVIEW_WIDTH   150
-#define IMAGE_PREVIEW_HEIGHT  75
+// Global
+SelectedBar selected_bar = BAR_NONE;
+GtkWidget *global_modal_layer = NULL;
 
-#define BG_COLOR       "#212121"
-#define SEQ_COLOR      "#00FF00"
-#define LAYER_COLOR    "#FF3333"
-
-// ESC key quits app
-gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data) {
-    if (event->keyval == GDK_KEY_Escape) {
-        gtk_main_quit();
-        return TRUE;
-    }
-    return FALSE;
+// Callbacks
+static void on_update_render_clicked(GtkButton *button, gpointer user_data)
+{
+	(void)button;
+	(void)user_data;
+	start_load_textures_async();
 }
 
-void on_load_button_clicked(GtkButton *button, gpointer user_data) {
-    GtkWidget *controls_box = GTK_WIDGET(user_data); // use controls box to pack previews
-    GtkWidget *dialog, *content_area, *file_chooser;
-    GtkWidget *fps_spin, *scale_combo;
-    GtkDialogFlags flags = GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT;
+static void on_app_destroy(GtkWidget *widget, gpointer data)
+{
+    (void)widget;
+    (void)data;
 
-    dialog = gtk_dialog_new_with_buttons("Load Video",
-                                         GTK_WINDOW(gtk_widget_get_toplevel(controls_box)),
-                                         flags,
-                                         "_Load", GTK_RESPONSE_ACCEPT,
-                                         "_Cancel", GTK_RESPONSE_REJECT,
-                                         NULL);
+    sdl_set_playing(0);
+    cleanup_frames_folders();
+    gtk_main_quit();
+}
 
-    content_area = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data)
+{
+    (void)widget;
+    (void)user_data;
 
-    // File chooser
-    file_chooser = gtk_file_chooser_widget_new(GTK_FILE_CHOOSER_ACTION_OPEN);
-    gtk_box_pack_start(GTK_BOX(content_area), file_chooser, TRUE, TRUE, 5);
+    const int step = 5;
 
-    // FPS spin button
-    fps_spin = gtk_spin_button_new_with_range(1, 60, 1);
-    gtk_spin_button_set_value(GTK_SPIN_BUTTON(fps_spin), 25);
-    gtk_box_pack_start(GTK_BOX(content_area), fps_spin, FALSE, FALSE, 5);
-
-    // Scale combo box (resolution selector)
-    scale_combo = gtk_combo_box_text_new();
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(scale_combo), "1080p");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(scale_combo), "720p");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(scale_combo), "480p");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(scale_combo), "360p");
-    gtk_combo_box_set_active(GTK_COMBO_BOX(scale_combo), 2); // default 480p
-    gtk_box_pack_start(GTK_BOX(content_area), scale_combo, FALSE, FALSE, 5);
-
-    gtk_widget_show_all(dialog);
-
-    if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
-        char *filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(file_chooser));
-        int fps = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(fps_spin));
-        const gchar *scale_text = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(scale_combo));
-
-        int scale_width = 854; // default 480p
-        if (g_strcmp0(scale_text, "1080p") == 0) scale_width = 1920;
-        else if (g_strcmp0(scale_text, "720p") == 0) scale_width = 1280;
-        else if (g_strcmp0(scale_text, "480p") == 0) scale_width = 854;
-        else if (g_strcmp0(scale_text, "360p") == 0) scale_width = 640;
-
-        // Determine folder number
-        static int video_count = 1;
-        char folder[256];
-        snprintf(folder, sizeof(folder), "Frames_%d", video_count);
-
-        // Clean folder first
-        char clean_cmd[512];
-        snprintf(clean_cmd, sizeof(clean_cmd), "mkdir -p \"%s\" && rm -f \"%s\"/*", folder, folder);
-        g_print("Cleaning folder: %s\n", clean_cmd);
-        system(clean_cmd);
-
-        // Run ffmpeg
-        char cmd[1024];
-        snprintf(cmd, sizeof(cmd),
-                 "ffmpeg -i \"%s\" -vf scale=%d:-1,fps=%d \"%s/frame_%%05d.png\" > /dev/null 2>&1",
-                 filename, scale_width, fps, folder);
-        g_print("Running command: %s\n", cmd);
-        system(cmd);
-
-        // Display first frame under Load button
-        char first_frame[512];
-        snprintf(first_frame, sizeof(first_frame), "%s/frame_00001.png", folder);
-
-        GError *error = NULL;
-        GdkPixbuf *pixbuf = gdk_pixbuf_new_from_file(first_frame, &error);
-        if (!pixbuf) {
-            g_print("Error loading image: %s\n", error->message);
-            g_error_free(error);
-        } else {
-            // Scale pixbuf to fixed width while keeping aspect ratio
-            int preview_width = 150;
-            int preview_height = (int)((double)preview_width / gdk_pixbuf_get_width(pixbuf) * gdk_pixbuf_get_height(pixbuf));
-            GdkPixbuf *scaled = gdk_pixbuf_scale_simple(pixbuf, preview_width, preview_height, GDK_INTERP_BILINEAR);
-            GtkWidget *preview = gtk_image_new_from_pixbuf(scaled);
-
-            gtk_box_pack_start(GTK_BOX(controls_box), preview, FALSE, FALSE, 5);
-            gtk_widget_show_all(controls_box);
-
-            g_object_unref(pixbuf);
-            g_object_unref(scaled);
+    switch (event->keyval) {
+    
+	case GDK_KEY_Escape:
+		gtk_widget_destroy(widget);
+		return TRUE;
+		
+    case GDK_KEY_Left:
+        if (selected_bar == BAR_START) {
+            left_bar_x = MAX(0, left_bar_x - step);
+            gtk_widget_set_margin_start(loop_start_box, left_bar_x);
+        } else if (selected_bar == BAR_END) {
+            right_bar_x = MAX(0, right_bar_x - step);
+            gtk_widget_set_margin_start(loop_end_box, right_bar_x);
         }
+        break;
 
-        g_free(filename);
-        video_count++;
+    case GDK_KEY_Right:
+        if (selected_bar == BAR_START) {
+            left_bar_x = MIN(right_bar_x - LOOP_BAR_WIDTH, left_bar_x + step);
+            gtk_widget_set_margin_start(loop_start_box, left_bar_x);
+        } else if (selected_bar == BAR_END) {
+            right_bar_x = MIN(sequences_overlay_width - LOOP_BAR_WIDTH, right_bar_x + step);
+            gtk_widget_set_margin_start(loop_end_box, right_bar_x);
+        }
+        break;
+
+    default:
+        break;
     }
 
-    gtk_widget_destroy(dialog);
+    gtk_widget_queue_draw(loop_start_box);
+    gtk_widget_queue_draw(loop_end_box);
+
+    return TRUE;
 }
 
-// Create a single layer skeleton
-GtkWidget* create_layer(int layer_number) {
-    GtkWidget *layer_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
-    gtk_widget_set_size_request(layer_box, CONTROL_WIDTH - 20, 120); // fixed height
-
-    GtkCssProvider *css = gtk_css_provider_new();
-    gtk_css_provider_load_from_data(css,
-        "* { background-color: " LAYER_COLOR "; }", -1, NULL);
-    gtk_style_context_add_provider(gtk_widget_get_style_context(layer_box),
-                                   GTK_STYLE_PROVIDER(css),
-                                   GTK_STYLE_PROVIDER_PRIORITY_USER);
-
-    // Layer title
-    char title[32];
-    snprintf(title, sizeof(title), "Layer %d", layer_number);
-    GtkWidget *label_title = gtk_label_new(title);
-    gtk_box_pack_start(GTK_BOX(layer_box), label_title, FALSE, FALSE, 2);
-
-    // Preview placeholder
-    GtkWidget *label_preview = gtk_label_new("(Empty)");
-    gtk_box_pack_start(GTK_BOX(layer_box), label_preview, TRUE, TRUE, 2);
-
-    // Button menu
-    GtkWidget *button_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
-    GtkWidget *btn_replace = gtk_button_new_with_label("Replace");
-    GtkWidget *btn_delete  = gtk_button_new_with_label("Delete");
-    GtkWidget *btn_effects = gtk_button_new_with_label("Effects");
-    GtkWidget *btn_edit    = gtk_button_new_with_label("Edit");
-    gtk_box_pack_start(GTK_BOX(button_box), btn_replace, TRUE, TRUE, 2);
-    gtk_box_pack_start(GTK_BOX(button_box), btn_delete,  TRUE, TRUE, 2);
-    gtk_box_pack_start(GTK_BOX(button_box), btn_effects, TRUE, TRUE, 2);
-    gtk_box_pack_start(GTK_BOX(button_box), btn_edit,    TRUE, TRUE, 2);
-
-    gtk_box_pack_start(GTK_BOX(layer_box), button_box, FALSE, FALSE, 2);
-
-    return layer_box;
-}
-
-// ==========================
-// MAIN
-// ==========================
-int main(int argc, char *argv[]) {
+// Main
+int main(int argc, char *argv[])
+{
+    srand((unsigned int)time(NULL));
     gtk_init(&argc, &argv);
 
-    GtkWidget *window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    gtk_window_set_title(GTK_WINDOW(window), "PULSRR");
-    gtk_window_set_default_size(GTK_WINDOW(window), WINDOW_WIDTH, WINDOW_HEIGHT);
-    gtk_window_set_resizable(GTK_WINDOW(window), FALSE);
-    gtk_window_set_position(GTK_WINDOW(window), GTK_WIN_POS_CENTER);
-    g_signal_connect(window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
-    g_signal_connect(window, "key-press-event", G_CALLBACK(on_key_press), NULL);
+    // Window
+    GtkWidget *win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+    gtk_window_set_title(GTK_WINDOW(win), "Pulsrr Sequencer");
+    gtk_window_set_default_size(GTK_WINDOW(win),MINIMAL_WINDOW_WIDTH,MINIMAL_WINDOW_HEIGHT);
+    gtk_window_set_resizable(GTK_WINDOW(win), FALSE);
+    g_signal_connect(win, "destroy", G_CALLBACK(on_app_destroy), NULL);
+    
+    // Set window icon
+	GError *icon_err = NULL;
+	if (!gtk_window_set_icon_from_file(GTK_WINDOW(win), "icon.png", &icon_err)) {
+		g_printerr("Failed to load icon: %s\n", icon_err->message);
+		g_clear_error(&icon_err);
+	}
 
-    GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-    gtk_container_add(GTK_CONTAINER(window), hbox);
+    // Overlay
+    GtkWidget *overlay = gtk_overlay_new();
+    gtk_container_add(GTK_CONTAINER(win), overlay);
 
-    // ---- Left Control Panel ----
-    GtkWidget *controls = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
-    gtk_widget_set_size_request(controls, CONTROL_WIDTH, -1);
+    // Main container
+    GtkWidget *main_hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_set_name(main_hbox, "main-container");
+    gtk_overlay_add_overlay(GTK_OVERLAY(overlay), main_hbox);
 
-    GtkCssProvider *css = gtk_css_provider_new();
-    gtk_css_provider_load_from_data(css,
-        "* { background-color: " BG_COLOR "; color: white; }", -1, NULL);
-    gtk_style_context_add_provider(gtk_widget_get_style_context(controls),
-                                   GTK_STYLE_PROVIDER(css),
-                                   GTK_STYLE_PROVIDER_PRIORITY_USER);
+    // Modal layer
+    GtkWidget *modal_layer = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_widget_set_name(modal_layer, "modal-layer");
+    gtk_widget_set_halign(modal_layer, GTK_ALIGN_CENTER);
+    gtk_widget_set_valign(modal_layer, GTK_ALIGN_CENTER);
+    gtk_widget_set_hexpand(modal_layer, TRUE);
+    gtk_widget_set_vexpand(modal_layer, TRUE);
+    gtk_overlay_add_overlay(GTK_OVERLAY(overlay), modal_layer);
+    gtk_widget_hide(modal_layer);
+    global_modal_layer = modal_layer;
 
-    GtkWidget *label_ctrl = gtk_label_new("Controls");
-    gtk_box_pack_start(GTK_BOX(controls), label_ctrl, FALSE, FALSE, 10);
+    // Left container
+    GtkWidget *left_container = gtk_box_new(GTK_ORIENTATION_VERTICAL, 16);
+    gtk_widget_set_name(left_container, "left-container");
+    gtk_widget_set_size_request(left_container, LEFT_CONTAINER_WIDTH, -1);
+    gtk_widget_set_hexpand(left_container, FALSE);
+    gtk_widget_set_vexpand(left_container, TRUE);
+    gtk_box_pack_start(GTK_BOX(main_hbox), left_container, FALSE, FALSE, 0);
 
-    // Load Video Button
-    GtkWidget *load_button = gtk_button_new_with_label("Load Video");
-    gtk_box_pack_start(GTK_BOX(controls), load_button, FALSE, FALSE, 10);
-    g_signal_connect(load_button, "clicked", G_CALLBACK(on_load_video_clicked), controls);
-
-    // --- 5 Layer Skeletons ---
-    for (int i = 1; i <= 5; i++) {
-        GtkWidget *layer = create_layer(i);
-        gtk_box_pack_start(GTK_BOX(controls), layer, FALSE, FALSE, 5);
+    // Logo
+    GdkPixbuf *pixbuf = gdk_pixbuf_new_from_file_at_scale("logo3.png", LOGO_WIDTH, -1, TRUE, NULL);
+    if (pixbuf) {
+        GtkWidget *logo = gtk_image_new_from_pixbuf(pixbuf);
+        g_object_unref(pixbuf);
+        gtk_widget_set_halign(logo, GTK_ALIGN_CENTER);
+        gtk_box_pack_start(GTK_BOX(left_container), logo, FALSE, FALSE, 0);
     }
 
-    // ---- Right Vertical Container ----
-    GtkWidget *right_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-    gtk_widget_set_hexpand(right_vbox, TRUE);
-    gtk_widget_set_vexpand(right_vbox, TRUE);
+    // Aphorism
+    gtk_box_pack_start(GTK_BOX(left_container),create_aphorism_widget(),FALSE, FALSE, 0);
 
-    GtkWidget *render_area = gtk_drawing_area_new();
-    gtk_widget_set_hexpand(render_area, TRUE);
-    gtk_widget_set_vexpand(render_area, TRUE);
-    gtk_style_context_add_provider(gtk_widget_get_style_context(render_area),
-                                   GTK_STYLE_PROVIDER(css),
-                                   GTK_STYLE_PROVIDER_PRIORITY_USER);
+    // Buttons
+    GtkWidget *button_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    gtk_widget_set_name(button_row, "button-row");
+    gtk_widget_set_size_request(button_row,LEFT_CONTAINER_WIDTH,BUTTON_TOP_CONTROL_HEIGHT);
+    gtk_box_pack_start(GTK_BOX(left_container), button_row, FALSE, FALSE, 0);
 
-    GtkWidget *sequencer = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-    gtk_widget_set_size_request(sequencer, -1, SEQ_HEIGHT);
-    GtkCssProvider *seq_css = gtk_css_provider_new();
-    gtk_css_provider_load_from_data(seq_css,
-        "* { background-color: " SEQ_COLOR "; }", -1, NULL);
-    gtk_style_context_add_provider(gtk_widget_get_style_context(sequencer),
-                                   GTK_STYLE_PROVIDER(seq_css),
-                                   GTK_STYLE_PROVIDER_PRIORITY_USER);
+    GtkWidget *btn_create = gtk_button_new_with_label("ADD SEQ.");
+    GtkWidget *btn_update = gtk_button_new_with_label("UPDATE");
 
-    GtkWidget *seq_label = gtk_label_new("SEQUENCE");
-    gtk_box_pack_start(GTK_BOX(sequencer), seq_label, TRUE, TRUE, 0);
+    gtk_widget_set_name(btn_create, "btn-add-seq");
+    gtk_widget_set_name(btn_update, "btn-update-render");
 
-    gtk_box_pack_start(GTK_BOX(right_vbox), render_area, TRUE, TRUE, 0);
-    gtk_box_pack_start(GTK_BOX(right_vbox), sequencer, FALSE, FALSE, 0);
+    gtk_widget_set_size_request(btn_create,BUTTON_TOP_CONTROL_WIDTH,BUTTON_TOP_CONTROL_HEIGHT);
+    gtk_widget_set_size_request(btn_update,BUTTON_TOP_CONTROL_WIDTH,BUTTON_TOP_CONTROL_HEIGHT);
+    
+    gtk_box_pack_start(GTK_BOX(button_row), btn_create, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(button_row), btn_update, TRUE, TRUE, 0);
 
-    gtk_box_pack_start(GTK_BOX(hbox), controls, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(hbox), right_vbox, TRUE, TRUE, 0);
+	// Log area (for future use)
+	GtkWidget *log_scroll = gtk_scrolled_window_new(NULL, NULL);
+	gtk_widget_set_name(log_scroll, "main-log-scroll");
+	gtk_widget_set_size_request(log_scroll, LEFT_CONTAINER_WIDTH, 60);
+	gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(log_scroll),
+		                           GTK_POLICY_AUTOMATIC,
+		                           GTK_POLICY_AUTOMATIC);
 
-    gtk_widget_show_all(window);
+	// Text view
+	GtkWidget *log_view = gtk_text_view_new();
+	gtk_widget_set_name(log_view, "main-log-view");
+	gtk_text_view_set_editable(GTK_TEXT_VIEW(log_view), FALSE);
+	gtk_text_view_set_cursor_visible(GTK_TEXT_VIEW(log_view), FALSE);
+	gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(log_view), GTK_WRAP_WORD_CHAR);
+	GtkTextBuffer *log_buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(log_view));
+	gtk_text_buffer_set_text(log_buffer, "[LOG] App Start.\n", -1);
+	gtk_container_add(GTK_CONTAINER(log_scroll), log_view);
+
+    // Layers
+	gtk_box_pack_start(GTK_BOX(left_container), create_layer_component(0), FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(left_container), create_layer_component(1), FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(left_container), create_layer_component(2), FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(left_container), create_layer_component(3), FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(left_container), log_scroll, FALSE, FALSE, 0);
+
+    // Version
+    GtkWidget *version_label = gtk_label_new("Version 0.0.1 by Rekav");
+    gtk_widget_set_name(version_label, "version-label");
+    gtk_widget_set_halign(version_label, GTK_ALIGN_CENTER);
+    gtk_box_pack_end(GTK_BOX(left_container), version_label, FALSE, FALSE, 0);
+
+    // Right container
+    GtkWidget *right_container = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_widget_set_name(right_container, "right-container");
+    gtk_widget_set_hexpand(right_container, TRUE);
+    gtk_widget_set_vexpand(right_container, TRUE);
+    gtk_box_pack_start(GTK_BOX(main_hbox), right_container, TRUE, TRUE, 0);
+
+    GtkWidget *render_panel = NULL;
+    GtkWidget *render_ui = create_render_screen(&render_panel);
+    gtk_box_pack_start(GTK_BOX(right_container), render_ui, TRUE, TRUE, 0);
+
+    g_timeout_add(33, sdl_refresh_loop, render_panel);
+
+    gtk_box_pack_start(GTK_BOX(right_container),create_sequencer_component(),FALSE, FALSE, 0);
+    
+    // Populate for later access
+	g_main_ui.log_view = GTK_TEXT_VIEW(log_view);
+	g_main_ui.log_buffer = log_buffer;
+	g_main_ui.main_container = main_hbox;
+
+    // Signals
+    g_signal_connect(btn_update, "clicked",G_CALLBACK(on_update_render_clicked), render_panel);
+    g_signal_connect(btn_create, "clicked",G_CALLBACK(on_add_button_clicked),main_hbox);
+    
+
+    gtk_widget_add_events(win, GDK_KEY_PRESS_MASK);
+    g_signal_connect(win, "key-press-event",G_CALLBACK(on_key_press), NULL);
+
+    // CSS
+    GtkCssProvider *css = gtk_css_provider_new();
+    GError *gerr = NULL;
+
+    if (!gtk_css_provider_load_from_path(css, "style.css", &gerr)) {
+        g_printerr("Failed to load style.css: %s\n", gerr->message);
+        g_clear_error(&gerr);
+    } else {
+        gtk_style_context_add_provider_for_screen(
+            gdk_screen_get_default(),
+            GTK_STYLE_PROVIDER(css),
+            GTK_STYLE_PROVIDER_PRIORITY_USER
+        );
+    }
+
+    gtk_widget_show_all(win);
     gtk_main();
-
     return 0;
 }
+
+
 

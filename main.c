@@ -87,8 +87,15 @@ int main(int argc, char *argv[])
     GtkWidget *win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gtk_window_set_title(GTK_WINDOW(win), "Pulsrr Sequencer");
     gtk_window_set_default_size(GTK_WINDOW(win),MINIMAL_WINDOW_WIDTH,MINIMAL_WINDOW_HEIGHT);
-    gtk_window_set_resizable(GTK_WINDOW(win), TRUE);
+    gtk_window_set_resizable(GTK_WINDOW(win), FALSE);
     g_signal_connect(win, "destroy", G_CALLBACK(on_app_destroy), NULL);
+    
+    // Set window icon
+	GError *icon_err = NULL;
+	if (!gtk_window_set_icon_from_file(GTK_WINDOW(win), "icon.png", &icon_err)) {
+		g_printerr("Failed to load icon: %s\n", icon_err->message);
+		g_clear_error(&icon_err);
+	}
 
     // Overlay
     GtkWidget *overlay = gtk_overlay_new();
@@ -148,17 +155,35 @@ int main(int argc, char *argv[])
     gtk_box_pack_start(GTK_BOX(button_row), btn_create, TRUE, TRUE, 0);
     gtk_box_pack_start(GTK_BOX(button_row), btn_update, TRUE, TRUE, 0);
 
+	// Log area (for future use)
+	GtkWidget *log_scroll = gtk_scrolled_window_new(NULL, NULL);
+	gtk_widget_set_name(log_scroll, "main-log-scroll");
+	gtk_widget_set_size_request(log_scroll, LEFT_CONTAINER_WIDTH, 60);
+	gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(log_scroll),
+		                           GTK_POLICY_AUTOMATIC,
+		                           GTK_POLICY_AUTOMATIC);
+
+	// Text view
+	GtkWidget *log_view = gtk_text_view_new();
+	gtk_widget_set_name(log_view, "main-log-view");
+	gtk_text_view_set_editable(GTK_TEXT_VIEW(log_view), FALSE);
+	gtk_text_view_set_cursor_visible(GTK_TEXT_VIEW(log_view), FALSE);
+	gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(log_view), GTK_WRAP_WORD_CHAR);
+	GtkTextBuffer *log_buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(log_view));
+	gtk_text_buffer_set_text(log_buffer, "[LOG] App Start.\n", -1);
+	gtk_container_add(GTK_CONTAINER(log_scroll), log_view);
+
     // Layers
 	gtk_box_pack_start(GTK_BOX(left_container), create_layer_component(0), FALSE, FALSE, 0);
 	gtk_box_pack_start(GTK_BOX(left_container), create_layer_component(1), FALSE, FALSE, 0);
 	gtk_box_pack_start(GTK_BOX(left_container), create_layer_component(2), FALSE, FALSE, 0);
 	gtk_box_pack_start(GTK_BOX(left_container), create_layer_component(3), FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(left_container), log_scroll, FALSE, FALSE, 0);
 
     // Version
     GtkWidget *version_label = gtk_label_new("Version 0.0.1 by Rekav");
     gtk_widget_set_name(version_label, "version-label");
     gtk_widget_set_halign(version_label, GTK_ALIGN_CENTER);
-    gtk_widget_set_margin_top(version_label, 10);
     gtk_box_pack_end(GTK_BOX(left_container), version_label, FALSE, FALSE, 0);
 
     // Right container
@@ -175,10 +200,16 @@ int main(int argc, char *argv[])
     g_timeout_add(33, sdl_refresh_loop, render_panel);
 
     gtk_box_pack_start(GTK_BOX(right_container),create_sequencer_component(),FALSE, FALSE, 0);
+    
+    // Populate for later access
+	g_main_ui.log_view = GTK_TEXT_VIEW(log_view);
+	g_main_ui.log_buffer = log_buffer;
+	g_main_ui.main_container = main_hbox;
 
     // Signals
     g_signal_connect(btn_update, "clicked",G_CALLBACK(on_update_render_clicked), render_panel);
-    g_signal_connect(btn_create, "clicked",G_CALLBACK(on_add_button_clicked),NULL);
+    g_signal_connect(btn_create, "clicked",G_CALLBACK(on_add_button_clicked),main_hbox);
+    
 
     gtk_widget_add_events(win, GDK_KEY_PRESS_MASK);
     g_signal_connect(win, "key-press-event",G_CALLBACK(on_key_press), NULL);

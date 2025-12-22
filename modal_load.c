@@ -73,7 +73,6 @@ static inline gboolean export_done_cb(gpointer data) {
 void on_load_button_clicked(GtkButton *button, gpointer user_data) {
 
 	sdl_set_playing(0);
-
 	guint8 layer_index = GPOINTER_TO_INT(user_data);
 
 	// Clear previous content if any
@@ -359,7 +358,7 @@ void on_drag_data_received(GtkWidget *widget,
                     update_export_estimation((VideoInfoLabels *)user_data);
 
                 } else {
-                    g_warning("Ignored non-MP4 file: %s", filename);
+                    add_main_log(g_strdup_printf("[WARN] Ignored non-MP4 file: %s", filename));
                 }
                 g_free(filename);
             }
@@ -371,14 +370,28 @@ void on_drag_data_received(GtkWidget *widget,
 }
 
 void on_export_clicked(GtkButton *button, gpointer user_data) {
-    ExportUIContext *ui = (ExportUIContext *)user_data;
-
+   
     // Read values from UI widgets
+    ExportUIContext *ui = (ExportUIContext *)user_data;
     const gchar *label_text = gtk_label_get_text(GTK_LABEL(ui->file_label));
     guint8 fps = gtk_spin_button_get_value_as_int(ui->fps_spin);
     const gchar *scale_text = gtk_combo_box_text_get_active_text(ui->scale_combo);
     guint8 layer_index = ui->layer_index;
     GtkWidget *progress_bar = ui->progress_bar;
+    gchar folder[64];
+    g_snprintf(folder, sizeof(folder), "Frames_%d", layer_index + 1);
+    
+    // Guardians
+    const gchar *file_path = gtk_label_get_text(GTK_LABEL(ui->file_label));
+    if (!file_path || !*file_path) {
+        add_main_log("[WARN] No file loaded.");
+        return;
+    }
+
+    if (g_file_test(file_path, G_FILE_TEST_IS_REGULAR) == FALSE) {
+        add_main_log("[WARN] File does not exist.");
+        return;
+    }
 
     // Determine resolution
     int resolution = 854; // default 480p
@@ -386,10 +399,6 @@ void on_export_clicked(GtkButton *button, gpointer user_data) {
     else if (g_strcmp0(scale_text, "720p") == 0) resolution = 1280;
     else if (g_strcmp0(scale_text, "480p") == 0) resolution = 854;
     else if (g_strcmp0(scale_text, "360p") == 0) resolution = 640;
-
-    // Folder name for exported frames
-    gchar folder[64];
-    g_snprintf(folder, sizeof(folder), "Frames_%d", layer_index + 1);
 
     // Allocated thread context
     ExportContext *th_ctx = g_malloc0(sizeof(ExportContext));
@@ -412,7 +421,7 @@ gpointer export_thread_func(gpointer data) {
 
     // Ensure folder exists
     if (g_mkdir_with_parents(folder_abs, 0755) != 0) {
-        g_warning("Failed to create folder: %s", folder_abs);
+        add_main_log(g_strdup_printf("[ERROR] Failed to create folder: %s", folder_abs));
         g_free(folder_abs);
         return NULL;
     }
@@ -429,7 +438,7 @@ gpointer export_thread_func(gpointer data) {
         }
         g_dir_close(dir);
     } else if (err) {
-        g_warning("Failed to open folder for cleaning: %s", err->message);
+        add_main_log(g_strdup_printf("[ERROR] Failed to open folder for cleaning: %s", err->message));
         g_error_free(err);
     }
 
@@ -448,7 +457,7 @@ gpointer export_thread_func(gpointer data) {
     
     FILE *pipe = popen(cmd, "r");
     if (!pipe) {
-        g_warning("Failed to run FFmpeg!");
+    	add_main_log("[ERROR] Failed to run FFmpeg!");
         g_free(folder_abs);
         return NULL;
     }

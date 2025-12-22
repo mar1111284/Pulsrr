@@ -94,17 +94,14 @@ GtkWidget* create_layer_component(guint8 layer_index) {
 
 void set_preview_thumbnail(guint8 layer_index)
 {
-
-	g_print("[DEBUG] set_preview_thumbnail called with layer_index=%u\n", layer_index);
-
     if (layer_index >= MAX_LAYERS) {
-        g_warning("set_preview_thumbnail: invalid layer_index %d", layer_index);
+        add_main_log(g_strdup_printf("[WARN] set_preview_thumbnail: invalid layer_index %u", layer_index));
         return;
     }
 
     GtkWidget *preview_box = layer_preview_boxes[layer_index];
     if (!preview_box) {
-        g_warning("set_preview_thumbnail: preview_box is NULL for layer %d", layer_index);
+        add_main_log(g_strdup_printf("[WARN] set_preview_thumbnail: preview_box is NULL for layer %u", layer_index));
         return;
     }
 
@@ -126,6 +123,7 @@ void set_preview_thumbnail(guint8 layer_index)
         gtk_widget_set_valign(empty_label, GTK_ALIGN_CENTER);
         gtk_container_add(GTK_CONTAINER(preview_box), empty_label);
         gtk_widget_show_all(preview_box);
+        add_main_log(g_strdup_printf("[INFO] set_preview_thumbnail: layer %u is empty", layer_index));
         return;
     }
 
@@ -146,7 +144,7 @@ void set_preview_thumbnail(guint8 layer_index)
     gchar *uri = g_filename_to_uri(abs_path, NULL, NULL);
     g_free(abs_path);
     if (!uri) {
-        g_warning("set_preview_thumbnail: failed to convert path to URI");
+        add_main_log(g_strdup_printf("[WARN] set_preview_thumbnail: failed to convert path to URI for layer %u", layer_index));
         return;
     }
 
@@ -178,10 +176,12 @@ void set_preview_thumbnail(guint8 layer_index)
     g_object_unref(provider);
 
     gtk_widget_show_all(preview_box);
+    
+    // Success
+    add_main_log(g_strdup_printf("[INFO] set_preview_thumbnail: layer %u preview set successfully", layer_index));
 }
 
 gboolean on_layer_menu_label_click(GtkWidget *widget, GdkEventButton *event, gpointer user_data) {
-    g_print("open or toggle\n");
     return TRUE;  // stop further propagation
 }
 

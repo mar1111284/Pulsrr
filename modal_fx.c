@@ -8,18 +8,10 @@ void on_fx_apply_clicked(GtkButton *button, gpointer user_data) {
 	guint8 layer_index = fx->layer_index;
 	double speed = gtk_spin_button_get_value(fx->speed_spin);
 	int alpha = gtk_spin_button_get_value_as_int(fx->alpha_spin);
-	int threshold = gtk_spin_button_get_value_as_int(fx->threshold_spin);
-	double contrast = gtk_spin_button_get_value(fx->contrast_spin);
+	//int threshold = gtk_spin_button_get_value_as_int(fx->threshold_spin);
+	//double contrast = gtk_spin_button_get_value(fx->contrast_spin);
 	gboolean grayscale = gtk_toggle_button_get_active(fx->gray_check);
-	gboolean invert = gtk_toggle_button_get_active(fx->invert_check);
-
-	g_print("APPLY FX for layer %d:\n", layer_index +1);
-	g_print("  Speed: %.2f\n", speed);
-	g_print("  Alpha: %d\n", alpha);
-	g_print("  Threshold: %d\n", threshold);
-	g_print("  Contrast: %.2f\n", contrast);
-	g_print("  Grayscale: %s\n", grayscale ? "ON" : "OFF");
-	g_print("  Invert: %s\n", invert ? "ON" : "OFF");
+	//gboolean invert = gtk_toggle_button_get_active(fx->invert_check);
 
 	// Apply Filter
 	set_transparency(layer_index, alpha);
@@ -30,7 +22,6 @@ void on_fx_apply_clicked(GtkButton *button, gpointer user_data) {
 void on_fx_button_clicked(GtkButton *button, gpointer user_data) {
 
 	sdl_set_playing(0);
-
 	guint8 layer_index = GPOINTER_TO_INT(user_data);
 
 	// Clear previous content if any

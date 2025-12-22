@@ -8,10 +8,7 @@
 #include "layer.h"
 #include "sdl_utilities.h"
 
-// --------------------
 // UI data structures
-// --------------------
-
 typedef struct {
     GtkLabel        *filename;
     GtkLabel        *resolution;
@@ -33,10 +30,7 @@ typedef struct {
     guint8          layer_index;
 } ExportUIContext;
 
-// --------------------
 // Thread / progress
-// --------------------
-
 typedef struct {
     GtkWidget *progress_bar;
     double     fraction;
@@ -52,10 +46,7 @@ typedef struct {
     gchar     *folder;
 } ExportContext;
 
-// --------------------
 // Callbacks / API
-// --------------------
-
 void on_load_button_clicked(GtkButton *button, gpointer user_data);
 void on_export_clicked(GtkButton *button, gpointer user_data);
 
