@@ -28,14 +28,9 @@ typedef struct {
     GtkComboBoxText *scale_combo;
     GtkWidget      *progress_bar;
     guint8          layer_index;
+	GtkWidget *btn_back;
+	GtkWidget *btn_export;
 } ExportUIContext;
-
-// Thread / progress
-typedef struct {
-    GtkWidget *progress_bar;
-    double     fraction;
-    char      *text;
-} ProgressUpdate;
 
 typedef struct {
     gchar     *file_path;
@@ -44,6 +39,10 @@ typedef struct {
     guint8     layer_index;
     GtkWidget *progress_bar;
     gchar     *folder;
+    GtkWidget *btn_back;
+    GtkWidget *btn_export;
+    GtkSpinButton *fps_spin;
+    GtkComboBoxText *scale_combo;
 } ExportContext;
 
 // Callbacks / API
@@ -66,6 +65,8 @@ gboolean debounce_update_estimation(gpointer user_data);
 
 gpointer export_thread_func(gpointer data);
 gboolean update_progress_cb(gpointer data);
+
+void on_export_modal_back_clicked(GtkButton *button, gpointer user_data);
 
 #endif // MODAL_LOAD_H
 

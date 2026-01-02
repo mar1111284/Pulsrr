@@ -3,26 +3,43 @@
 #include "screen_panel.h"
 #include "sdl_utilities.h"
 
-// SDL embed callback
-void on_drawarea_map(GtkWidget *widget, gpointer data) {
-    if (!sdl_is_initialized()) {
-        sdl_embed_in_gtk(widget);
-    }
+static GtkWidget *global_render_controls = NULL;
+extern SDL g_sdl;
+
+// once mapped embed SDL
+void on_drawarea_map(GtkWidget *widget, gpointer data)
+{
+    g_print("[GTK] Drawing area mapped\n");
+
+    sdl_embed_in_gtk(widget);
+
+    gtk_widget_queue_resize(widget);
 }
 
-
-// SDL refresh loop
-gboolean sdl_refresh_loop(gpointer data)
+// Callback: LIVE mode button
+static void on_live_mode_clicked(GtkButton *button, gpointer user_data)
 {
-    sdl_draw_frame();
-    SDL_RenderPresent(sdl_get_renderer());
-    return TRUE;
+    (void)button;
+    (void)user_data;
+
+    g_sdl.screen_mode = LIVE_MODE;
+    g_print("[MODE] LIVE\n");
+}
+
+// Callback: PLAYBACK mode button
+static void on_playback_mode_clicked(GtkButton *button, gpointer user_data)
+{
+    (void)button;
+    (void)user_data;
+
+    g_sdl.screen_mode = PLAYBACK_MODE;
+    g_print("[MODE] PLAYBACK\n");
 }
 
 // Create render screen
 GtkWidget* create_render_screen(GtkWidget **out_render_panel)
 {
-    // Render frame
+    // Render frame container
     GtkWidget *render_frame = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_widget_set_name(render_frame, "render-panel");
     gtk_widget_set_hexpand(render_frame, TRUE);
@@ -34,35 +51,29 @@ GtkWidget* create_render_screen(GtkWidget **out_render_panel)
     gtk_widget_set_vexpand(render_panel, TRUE);
     gtk_box_pack_start(GTK_BOX(render_frame), render_panel, TRUE, TRUE, 0);
 
-    // Controls
+    // Control bar for mode buttons
     GtkWidget *render_control = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 20);
     gtk_widget_set_halign(render_control, GTK_ALIGN_CENTER);
     gtk_box_pack_start(GTK_BOX(render_frame), render_control, FALSE, FALSE, 5);
+    global_render_controls = render_control;
 
-    GtkWidget *btn_play = gtk_button_new_from_icon_name("media-playback-start", GTK_ICON_SIZE_BUTTON);
-    GtkWidget *btn_pause = gtk_button_new_from_icon_name("media-playback-pause", GTK_ICON_SIZE_BUTTON);
+    // Add LIVE / PLAYBACK buttons
+    GtkWidget *btn_live = gtk_button_new_with_label("LIVE");
+    GtkWidget *btn_playback = gtk_button_new_with_label("PLAYBACK");
 
-    gtk_widget_set_name(btn_play, "btn-play");
-    gtk_widget_set_name(btn_pause, "btn-pause");
+    gtk_box_pack_start(GTK_BOX(render_control), btn_live, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(render_control), btn_playback, FALSE, FALSE, 0);
 
-    gtk_box_pack_start(GTK_BOX(render_control), btn_play, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(render_control), btn_pause, FALSE, FALSE, 0);
-    
-    // ensure it's realized
-	gtk_widget_show(render_panel);
+    g_signal_connect(btn_live, "clicked",
+                     G_CALLBACK(on_live_mode_clicked), NULL);
+    g_signal_connect(btn_playback, "clicked",
+                     G_CALLBACK(on_playback_mode_clicked), NULL);
 
-    // Signals
-    g_signal_connect(render_panel, "map",G_CALLBACK(on_drawarea_map), NULL);
-    g_signal_connect(btn_play, "clicked",G_CALLBACK(on_play_clicked), NULL);
-    g_signal_connect(btn_pause, "clicked",G_CALLBACK(on_pause_clicked), NULL);
+    // Ensure drawing area is realized
+    gtk_widget_show(render_panel);
 
-	/*
-	if (!sdl_is_initialized()) {
-		sdl_embed_in_gtk(render_panel);
-	} else {
-		g_timeout_add(33, sdl_refresh_loop, render_panel);
-	}
-	*/
+    // Connect map signal to embed SDL
+    g_signal_connect(render_panel, "map", G_CALLBACK(on_drawarea_map), NULL);
 
     if (out_render_panel)
         *out_render_panel = render_panel;
@@ -70,17 +81,14 @@ GtkWidget* create_render_screen(GtkWidget **out_render_panel)
     return render_frame;
 }
 
-// Play callback
+// Optional: stubs for play/pause buttons if needed later
 void on_play_clicked(GtkWidget *widget, gpointer user_data)
 {
-    if (!sdl_is_playing())
-        sdl_set_playing(1);
+    g_print("on play clicked\n");
 }
 
-// Pause callback
 void on_pause_clicked(GtkWidget *widget, gpointer user_data)
 {
-    if (sdl_is_playing())
-        sdl_set_playing(0);
+    g_print("on pause clicked\n");
 }
 

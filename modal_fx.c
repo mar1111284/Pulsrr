@@ -14,15 +14,26 @@ void on_fx_apply_clicked(GtkButton *button, gpointer user_data) {
 	//gboolean invert = gtk_toggle_button_get_active(fx->invert_check);
 
 	// Apply Filter
-	set_transparency(layer_index, alpha);
-	set_gray(layer_index, grayscale ? 1 : 0);
-    set_layer_speed(layer_index, speed);
+	sdl_set_layer_alpha(layer_index, alpha);
+	sdl_set_layer_grayscale(layer_index, grayscale ? 1 : 0);
+    sdl_set_layer_speed(layer_index, speed);
+    
+    // Only play if frames exist or not loading
+    if (sdl_get_render_state() != RENDER_STATE_NO_FRAMES &&
+        sdl_get_render_state() != RENDER_STATE_LOADING) {
+        sdl_set_render_state(RENDER_STATE_PLAY);
+    }
 }
 
 void on_fx_button_clicked(GtkButton *button, gpointer user_data) {
 
-	sdl_set_playing(0);
 	guint8 layer_index = GPOINTER_TO_INT(user_data);
+	
+    // Only pause if frames exist or not loading
+    if (sdl_get_render_state() != RENDER_STATE_NO_FRAMES &&
+        sdl_get_render_state() != RENDER_STATE_LOADING) {
+        sdl_set_render_state(RENDER_STATE_PAUSE);
+    }
 
 	// Clear previous content if any
 	GList *children = gtk_container_get_children(GTK_CONTAINER(global_modal_layer));
@@ -51,10 +62,10 @@ void on_fx_button_clicked(GtkButton *button, gpointer user_data) {
 	GtkWidget *speed_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
 	gtk_widget_set_hexpand(speed_box, TRUE);
 	GtkWidget *speed_label = gtk_label_new("Speed");
-	GtkWidget *speed_spin = gtk_spin_button_new_with_range(0.5, 8.0, 0.5);
+	GtkWidget *speed_spin = gtk_spin_button_new_with_range(0.25, 8.0, 0.25);
 
 	// Get actual speed from SDL
-	double current_speed = get_layer_speed(layer_index);
+	double current_speed = sdl_get_layer_speed(layer_index);
 	gtk_spin_button_set_value(GTK_SPIN_BUTTON(speed_spin), current_speed);
 
 	gtk_box_pack_start(GTK_BOX(speed_box), speed_label, FALSE, FALSE, 5);
@@ -66,7 +77,7 @@ void on_fx_button_clicked(GtkButton *button, gpointer user_data) {
 	GtkWidget *alpha_label = gtk_label_new("Alpha");
 	GtkWidget *alpha_spin = gtk_spin_button_new_with_range(0, 255, 1);
 	gtk_spin_button_set_value(GTK_SPIN_BUTTON(alpha_spin), 255);
-	int current_alpha = get_transparency(layer_index);
+	int current_alpha = sdl_get_alpha(layer_index);
 	gtk_spin_button_set_value(GTK_SPIN_BUTTON(alpha_spin), current_alpha);
 	gtk_box_pack_start(GTK_BOX(alpha_box), alpha_label, FALSE, FALSE, 5);
 	gtk_box_pack_start(GTK_BOX(alpha_box), alpha_spin, TRUE, TRUE, 0);
@@ -111,7 +122,7 @@ void on_fx_button_clicked(GtkButton *button, gpointer user_data) {
 	GtkWidget *gray_label = gtk_label_new("Gray");
 	GtkWidget *gray_check = gtk_check_button_new();
 
-	gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(gray_check), is_layer_gray(layer_index));
+	gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(gray_check), sdl_is_layer_gray(layer_index));
 	gtk_box_pack_start(GTK_BOX(gray_box), gray_label, FALSE, FALSE, 5);
 	gtk_box_pack_start(GTK_BOX(gray_box), gray_check, TRUE, TRUE, 0);
 

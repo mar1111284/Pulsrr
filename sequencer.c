@@ -1,5 +1,7 @@
 #include "utils.h"
 #include "sequencer.h"
+#include "sdl_utilities.h"
+#include "modal_download.h"
 
 // Globals
 int left_bar_x  = -1;
@@ -8,6 +10,80 @@ int sequences_overlay_width = 0;
 
 GtkWidget *loop_end_box = NULL;
 GtkWidget *loop_start_box = NULL;
+GtkWidget *sequences_box = NULL;
+
+static gboolean update_sequencer_ui(gpointer user_data);
+
+static void on_sequence_play_clicked(GtkButton *button, gpointer user_data)
+{
+    // Only play if frames exist or not loading
+    if (sdl_get_render_state() != RENDER_STATE_NO_FRAMES &&
+        sdl_get_render_state() != RENDER_STATE_LOADING) {
+        sdl_set_render_state(RENDER_STATE_PLAY);
+    }
+}
+
+static void on_sequence_pause_clicked(GtkButton *button, gpointer user_data)
+{
+	// Only pause if frames exist or not loading
+    if (sdl_get_render_state() != RENDER_STATE_NO_FRAMES &&
+        sdl_get_render_state() != RENDER_STATE_LOADING) {
+        sdl_set_render_state(RENDER_STATE_PAUSE);
+    }
+}
+
+
+static void on_sequence_restart_clicked(GtkButton *button, gpointer user_data)
+{
+    g_print("[UI] sequence-restart clicked\n");
+}
+
+static void on_sequence_loop_clicked(GtkButton *button, gpointer user_data)
+{
+    g_print("[UI] sequence-loop clicked\n");
+}
+
+void update_sequencer(void) {
+    g_idle_add(update_sequencer_ui, NULL);
+}
+
+static void clear_container(GtkWidget *container) {
+    GList *children = gtk_container_get_children(GTK_CONTAINER(container));
+    for (GList *l = children; l != NULL; l = l->next)
+        gtk_widget_destroy(GTK_WIDGET(l->data));
+    g_list_free(children);
+}
+
+static gboolean update_sequencer_ui(gpointer user_data) {
+    if (!sequences_box)
+        return G_SOURCE_REMOVE;
+
+    clear_container(sequences_box);
+
+    int num_sequences = get_number_of_sequences();
+
+    if (num_sequences == 0) {
+        GtkWidget *empty_label = gtk_label_new("(No sequence added)");
+        gtk_widget_set_name(empty_label, "no-sequence-label");
+        gtk_widget_set_hexpand(empty_label, TRUE);
+        gtk_widget_set_vexpand(empty_label, TRUE);
+        gtk_widget_set_halign(empty_label, GTK_ALIGN_CENTER);
+        gtk_widget_set_valign(empty_label, GTK_ALIGN_CENTER);
+        gtk_box_pack_start(GTK_BOX(sequences_box), empty_label, TRUE, TRUE, 0);
+    } else {
+        for (int i = 0; i < num_sequences; i++) {
+            gchar *sequence_path = g_strdup_printf("sequences/sequence_%d", i + 1);
+            GtkWidget *sequence_widget = create_sequence_widget_css(sequence_path);
+            gtk_box_pack_start(GTK_BOX(sequences_box), sequence_widget, TRUE, TRUE, 2);
+            g_free(sequence_path);
+        }
+    }
+
+    gtk_widget_show_all(sequences_box);
+
+    return G_SOURCE_REMOVE; // run once
+}
+
 
 // Overlay size allocate callback
 void on_overlay_size_allocate(GtkWidget *widget, GtkAllocation *allocation, gpointer user_data) {
@@ -44,7 +120,7 @@ gboolean on_bar_clicked(GtkWidget *widget, GdkEventButton *event, gpointer user_
 
 // Create a CSS-styled sequence widget
 GtkWidget* create_sequence_widget_css(const char *sequence_folder) {
-    gchar *frame_path = g_build_filename(sequence_folder, "frame_00001.png", NULL);
+    gchar *frame_path = g_build_filename(sequence_folder, "mixed_frames/frame_00001.png", NULL);
 
     if (!g_file_test(frame_path, G_FILE_TEST_IS_REGULAR)) {
         g_free(frame_path);
@@ -216,31 +292,13 @@ GtkWidget *create_sequencer_component(void) {
     gtk_widget_set_vexpand(sequences_overlay, TRUE);
     gtk_box_pack_start(GTK_BOX(sequencer_view), sequences_overlay, TRUE, TRUE, 0);
 
-    GtkWidget *sequences_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
+    sequences_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
     gtk_widget_set_name(sequences_box, "frames-box");
     gtk_widget_set_hexpand(sequences_box, TRUE);
     gtk_widget_set_vexpand(sequences_box, TRUE);
     gtk_container_add(GTK_CONTAINER(sequences_overlay), sequences_box);
 
-    int num_sequences = get_number_of_sequences();
-    if (num_sequences == 0) {
-        GtkWidget *empty_label = gtk_label_new("(No sequence added)");
-        gtk_widget_set_name(empty_label, "no-sequence-label");
-        gtk_widget_set_hexpand(empty_label, TRUE);
-        gtk_widget_set_vexpand(empty_label, TRUE);
-        gtk_widget_set_halign(empty_label, GTK_ALIGN_CENTER);
-        gtk_widget_set_valign(empty_label, GTK_ALIGN_CENTER);
-        gtk_box_pack_start(GTK_BOX(sequences_box), empty_label, TRUE, TRUE, 0);
-    } else {
-        for (int i = 0; i < num_sequences; i++) {
-            gchar *sequence_path = g_strdup_printf("sequences/sequence_%d", i + 1);
-            GtkWidget *sequence_widget = create_sequence_widget_css(sequence_path);
-            gtk_box_pack_start(GTK_BOX(sequences_box), sequence_widget, TRUE, TRUE, 2);
-            g_free(sequence_path);
-        }
-    }
-
-    gtk_widget_show_all(sequences_box);
+    update_sequencer();
 
     // Loop bars
     loop_start_box = gtk_event_box_new();
@@ -307,6 +365,14 @@ GtkWidget *create_sequencer_component(void) {
 
     gtk_box_pack_start(GTK_BOX(sequencer_container), controls_box, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(sequencer_container), sequencer_view, TRUE, TRUE, 0);
+    
+    // Button signals
+    g_signal_connect(sequence_play,"clicked",G_CALLBACK(on_sequence_play_clicked), NULL);
+	g_signal_connect(sequence_pause,"clicked",G_CALLBACK(on_sequence_pause_clicked), NULL);
+	g_signal_connect(sequence_restart,"clicked",G_CALLBACK(on_sequence_restart_clicked), NULL);
+	g_signal_connect(sequence_loop,"clicked",G_CALLBACK(on_sequence_loop_clicked), NULL);
+	g_signal_connect(btn_export, "clicked", G_CALLBACK(on_download_button_clicked), sequencer_container);
+
 
     return sequencer_container;
 }

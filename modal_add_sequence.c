@@ -1,6 +1,169 @@
 #include "modal_add_sequence.h"
 #include "utils.h"
+#include "sdl.h"
 #include "sdl_utilities.h"
+#include "sequencer.h"
+#include <SDL2/SDL_image.h>
+
+int encode_frames_folder_with_ffmpeg(const gchar *frames_folder, const gchar *output_mp4, int fps, int width, int height)
+{
+    if (!g_file_test(frames_folder, G_FILE_TEST_IS_DIR)) {
+        add_main_log(g_strdup_printf("[FFMPEG] Folder not found: %s", frames_folder));
+        return -1;
+    }
+
+    gchar *cmd = g_strdup_printf(
+        "ffmpeg -y -framerate %d -i \"%s/frame_%%05d.png\" -s %dx%d -pix_fmt yuv420p -c:v libx264 \"%s\"",
+        fps, frames_folder, width, height, output_mp4
+    );
+
+    int ret = system(cmd);
+    if (ret != 0) {
+        add_main_log(g_strdup_printf("[FFMPEG] Encoding failed (code=%d)", ret));
+        g_free(cmd);
+        return -1;
+    }
+
+    add_main_log("[FFMPEG] Video generated successfully.");
+    g_free(cmd);
+    return 0;
+}
+
+void generate_sequence_frames(int duration, int width, int height, const gchar *sequence_folder, AddSequenceUI *ui)
+{
+    Layer layers[MAX_LAYERS] = {0};
+    gchar layer_folder[PATH_MAX];
+    gchar fx_path[PATH_MAX];
+
+    // Parse fx.txt
+    snprintf(fx_path, sizeof(fx_path), "%s/fx.txt", sequence_folder);
+    FILE *fx_file = fopen(fx_path, "r");
+    if (!fx_file) {
+        add_log(ui, "[ERROR] Cannot open fx.txt");
+        return;
+    }
+
+    for (int i = 0; i < MAX_LAYERS; i++) {
+        layers[i].speed = 1.0;
+        layers[i].grayscale = 0;
+        layers[i].alpha = 255;
+        layers[i].frame_count = 0;
+        layers[i].frames = NULL;
+        layers[i].frames_gray = NULL;
+        layers[i].frame_folder = NULL;
+    }
+
+    int current_layer = -1;
+    char line[128];
+    while (fgets(line, sizeof(line), fx_file)) {
+        if (strncmp(line, "layer=", 6) == 0) {
+            current_layer = atoi(line + 6);
+        } else if (strncmp(line, "speed=", 6) == 0 && current_layer >= 0) {
+            layers[current_layer].speed = atof(line + 6);
+        } else if (strncmp(line, "gray=", 5) == 0 && current_layer >= 0) {
+            layers[current_layer].grayscale = atoi(line + 5);
+        } else if (strncmp(line, "alpha=", 6) == 0 && current_layer >= 0) {
+            layers[current_layer].alpha = atoi(line + 6);
+        }
+    }
+    fclose(fx_file);
+
+    // Load frames for each layer
+    set_progress_add_sequence(ui, 0.1, "Loading layers...");
+    for (int i = 0; i < MAX_LAYERS; i++) {
+        snprintf(layer_folder, sizeof(layer_folder), "%s/Frames_%d", sequence_folder, i + 1);
+        layers[i].frame_folder = g_strdup(layer_folder);
+        layers[i].frame_count = count_frames(layers[i].frame_folder);
+        if (layers[i].frame_count == 0) continue;
+
+        layers[i].frames = malloc(sizeof(SDL_Surface*) * layers[i].frame_count);
+        layers[i].frames_gray = malloc(sizeof(SDL_Surface*) * layers[i].frame_count);
+
+        for (int f = 0; f < layers[i].frame_count; f++) {
+            gchar frame_file[PATH_MAX];
+            snprintf(frame_file, sizeof(frame_file), "%s/frame_%05d.png", layers[i].frame_folder, f + 1);
+            SDL_Surface *surf = IMG_Load(frame_file);
+            layers[i].frames[f] = surf;
+
+			SDL_Surface *surf_gray = NULL;
+			if (layers[i].grayscale) {
+				surf_gray = create_grayscale_surface(surf);
+			} else {
+				surf_gray = NULL;
+			}
+			layers[i].frames_gray[f] = surf_gray;
+
+        }
+
+        add_log(ui, g_strdup_printf("[LOAD] Layer %d loaded (%d frames)", i + 1, layers[i].frame_count));
+    }
+
+    // Prepare mixed_frames folder
+    gchar mixed_dir[PATH_MAX];
+    snprintf(mixed_dir, sizeof(mixed_dir), "%s/mixed_frames", sequence_folder);
+    ensure_dir(mixed_dir);
+
+    int total_output_frames = duration * 25; // fixed 25 FPS
+    set_progress_add_sequence(ui, 0.5, "Mixing frames...");
+
+    for (int f = 0; f < total_output_frames; f++) {
+        SDL_Surface *mixed = SDL_CreateRGBSurface(0, width, height, 32, 0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000);
+        SDL_FillRect(mixed, NULL, SDL_MapRGBA(mixed->format, 0, 0, 0, 255));
+
+        for (int l = 0; l < MAX_LAYERS; l++) {
+            if (layers[l].frame_count == 0) continue;
+
+            int frame_idx;
+            if (layers[l].speed >= 1.0)
+                frame_idx = (int)(f * layers[l].speed) % layers[l].frame_count;
+            else {
+                int repeat = (int)(1.0 / layers[l].speed + 0.5);
+                frame_idx = (f / repeat) % layers[l].frame_count;
+            }
+
+            SDL_Surface *src = layers[l].grayscale ? layers[l].frames_gray[frame_idx] : layers[l].frames[frame_idx];
+            if (!src) continue;
+
+            SDL_SetSurfaceBlendMode(src, SDL_BLENDMODE_BLEND);
+            SDL_SetSurfaceAlphaMod(src, layers[l].alpha);
+
+            SDL_Rect dest = {0, 0, width, height};
+            SDL_BlitScaled(src, NULL, mixed, &dest);
+        }
+
+        gchar *frame_name = g_strdup_printf("frame_%05d.png", f + 1);
+        gchar *filename = g_build_filename(mixed_dir, frame_name, NULL);
+        IMG_SavePNG(mixed, filename);
+        g_free(frame_name);
+        g_free(filename);
+        SDL_FreeSurface(mixed);
+
+        if (f % (total_output_frames / 10) == 0)
+            set_progress_add_sequence(ui, 0.5 + 0.4 * f / total_output_frames, "Mixing frames...");
+    }
+
+    // Encode video
+    gchar *output_mp4 = g_build_filename(sequence_folder, g_strdup_printf("sequence_%s.mp4", strrchr(sequence_folder, '/') + 1), NULL);
+    set_progress_add_sequence(ui, 0.9, "Encoding video...");
+    encode_frames_folder_with_ffmpeg(mixed_dir, output_mp4, 25, width, height);
+    g_free(output_mp4);
+
+    // Cleanup
+    for (int i = 0; i < MAX_LAYERS; i++) {
+        if (!layers[i].frames) continue;
+        for (int f = 0; f < layers[i].frame_count; f++) {
+            if (layers[i].frames[f]) SDL_FreeSurface(layers[i].frames[f]);
+            if (layers[i].frames_gray[f]) SDL_FreeSurface(layers[i].frames_gray[f]);
+        }
+        free(layers[i].frames);
+        free(layers[i].frames_gray);
+        g_free(layers[i].frame_folder);
+    }
+
+    set_progress_add_sequence(ui, 1.0, "Completed");
+    add_log(ui, "[INFO] Sequence frames generated successfully.");
+}
+
 
 void set_progress_add_sequence(AddSequenceUI *ui, double fraction, const char *text)
 {
@@ -16,7 +179,11 @@ void set_progress_add_sequence(AddSequenceUI *ui, double fraction, const char *t
 
 void on_add_button_clicked(GtkButton *button, gpointer user_data) {
 	
-	sdl_set_playing(0);
+	// Only pause if frames exist or not loading
+    if (sdl_get_render_state() != RENDER_STATE_NO_FRAMES &&
+        sdl_get_render_state() != RENDER_STATE_LOADING) {
+        sdl_set_render_state(RENDER_STATE_PAUSE);
+    }
 
 	// Clear previous content if any
 	GList *children = gtk_container_get_children(GTK_CONTAINER(global_modal_layer));
@@ -168,9 +335,9 @@ void create_fx_file(const char *path, AddSequenceUI *ui)
     }
 
     for (int layer = 0; layer < MAX_LAYERS; layer++) {
-        double speed = get_layer_speed(layer);
-        int gray = is_layer_gray(layer);
-        int alpha = get_transparency(layer);
+        double speed = sdl_get_layer_speed(layer);
+        int gray = sdl_is_layer_gray(layer);
+        int alpha = sdl_get_alpha(layer);
 
         fprintf(f, "layer=%d\n", layer);
         fprintf(f, "speed=%f\n", speed);
@@ -188,6 +355,7 @@ void create_fx_file(const char *path, AddSequenceUI *ui)
 
 void on_add_sequence_clicked(GtkButton *button, gpointer user_data)
 {
+
     AddSequenceUI *ui = (AddSequenceUI *)user_data;
 	gtk_widget_set_sensitive(ui->root_container, FALSE);
 	gtk_widget_set_sensitive(ui->parent_container, FALSE);
@@ -196,10 +364,10 @@ void on_add_sequence_clicked(GtkButton *button, gpointer user_data)
     ensure_dir("sequences");
     int seq = get_next_sequence_index();
     gchar *seq_dir = g_strdup_printf("sequences/sequence_%d", seq);
-    ensure_dir(seq_dir);
+    ensure_dir(seq_dir); 
 	
 	set_progress_add_sequence(ui, 0.02, "Copy frame folders...");
-    /* Copy frame folders */
+
     gchar *dst = NULL;
 
     dst = g_build_filename(seq_dir, "Frames_1", NULL);
@@ -231,12 +399,17 @@ void on_add_sequence_clicked(GtkButton *button, gpointer user_data)
     else if (strcmp(scale, "360p") == 0) { output_width = 640; output_height = 360; }
     
     add_log(ui, "[INFO] Add Sequence process start...");
-    create_video_from_sequence(duration, output_width,output_height,seq, ui);
+    generate_sequence_frames(duration, output_width, output_height, seq_dir, ui);
     add_log(ui, "[INFO] Add Sequence process completed.");
+    
+    set_progress_add_sequence(ui, 0.9, "Updating sequence textures.");
+    update_sequence_texture();
     set_progress_add_sequence(ui, 1, "Completed.");
 
     g_free(seq_dir);
     gtk_widget_set_sensitive(ui->root_container, TRUE);
     gtk_widget_set_sensitive(ui->parent_container, TRUE);
+    
+    
 }
 

@@ -1,4 +1,5 @@
 #include <gtk/gtk.h>
+#include <gdk/gdkx.h> 
 #include <stdlib.h>
 #include <time.h>
 #include <stdio.h>
@@ -11,25 +12,48 @@
 #include "screen_panel.h"
 #include "sdl_utilities.h"
 #include "modal_add_sequence.h"
+#include <locale.h>
+#include <X11/Xlib.h>
+
 
 // Global
 SelectedBar selected_bar = BAR_NONE;
 GtkWidget *global_modal_layer = NULL;
 
 // Callbacks
+
 static void on_update_render_clicked(GtkButton *button, gpointer user_data)
 {
-	(void)button;
-	(void)user_data;
-	start_load_textures_async();
+    (void)button;
+    (void)user_data;
+
+    g_print("[UPDATE] User requested texture update\n");
+
+    gboolean has_modified = FALSE;
+    for (guint8 i = 0; i < MAX_LAYERS; i++) {
+        if (sdl_get_layer_state(i) == LAYER_MODIFIED) {
+            has_modified = TRUE;
+            break;
+        }
+    }
+
+    if (!has_modified) {
+        g_print("[UPDATE] No layers need updating. Skipping texture update.\n");
+        return;
+    }
+
+    sdl_set_render_state(RENDER_STATE_LOADING);
+    update_textures_async();
+
+    g_print("[UPDATE] Texture update started asynchronously\n");
 }
+
+
 
 static void on_app_destroy(GtkWidget *widget, gpointer data)
 {
     (void)widget;
     (void)data;
-
-    sdl_set_playing(0);
     cleanup_frames_folders();
     gtk_main_quit();
 }
@@ -196,10 +220,10 @@ int main(int argc, char *argv[])
     GtkWidget *render_panel = NULL;
     GtkWidget *render_ui = create_render_screen(&render_panel);
     gtk_box_pack_start(GTK_BOX(right_container), render_ui, TRUE, TRUE, 0);
-
-    g_timeout_add(33, sdl_refresh_loop, render_panel);
-
     gtk_box_pack_start(GTK_BOX(right_container),create_sequencer_component(),FALSE, FALSE, 0);
+    gtk_widget_set_app_paintable(render_panel, TRUE);
+	gtk_widget_set_has_window(render_panel, TRUE);
+
     
     // Populate for later access
 	g_main_ui.log_view = GTK_TEXT_VIEW(log_view);
@@ -209,7 +233,6 @@ int main(int argc, char *argv[])
     // Signals
     g_signal_connect(btn_update, "clicked",G_CALLBACK(on_update_render_clicked), render_panel);
     g_signal_connect(btn_create, "clicked",G_CALLBACK(on_add_button_clicked),main_hbox);
-    
 
     gtk_widget_add_events(win, GDK_KEY_PRESS_MASK);
     g_signal_connect(win, "key-press-event",G_CALLBACK(on_key_press), NULL);

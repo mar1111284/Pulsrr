@@ -6,9 +6,15 @@
 
 // Render & Layer States
 typedef enum {
+    LIVE_MODE,
+    PLAYBACK_MODE
+} ScreenMode;
+
+typedef enum {
     RENDER_STATE_NO_FRAMES,
     RENDER_STATE_LOADING,
-    RENDER_STATE_READY
+    RENDER_STATE_PLAY,
+    RENDER_STATE_PAUSE,
 } RenderState;
 
 typedef enum {
@@ -17,40 +23,94 @@ typedef enum {
     LAYER_MODIFIED
 } LayerState;
 
-// Global Variables
-extern SDL_Renderer *renderer;
-extern SDL_Window   *sdl_win;
+// Core runtime
+typedef struct {
+    SDL_Window   *window;
+    SDL_Renderer *renderer;
+    SDL_Surface  *surface;
+    gboolean      initialized;
+    RenderState   render_state;
+    ScreenMode screen_mode;
+    guint         draw_source_id;
+    pthread_mutex_t mutex;
+    struct Layer    *layers[4];
+    struct Sequence *sequence;
+} SDL;
 
-extern double layer_speed[4];
-extern Uint8  layer_alpha[4];
-extern Uint8  layer_gray[4];
-extern LayerState layer_state[4];
 
-extern int is_playing;
-extern RenderState render_state;
+// Layer specifications
+typedef struct Layer {
+    char *frame_folder;
+    SDL_Surface **frames;
+    SDL_Surface **frames_gray;
+    SDL_Texture **textures;
+    SDL_Texture **textures_gray;
+    int     current_frame;
+    int     frame_count;
+    Uint32  last_tick;
+    double  speed;
+    int     fps;
+    Uint8   alpha;
+    int     grayscale;
+    int     blend_mode;
+    int     width;
+    int     height;
+    LayerState state;
+} Layer;
 
-// Render State Accessors
-RenderState get_render_state(void);
-int sdl_is_initialized(void);
+// Sequence specifications
+typedef struct Sequence {
+    char *root_folder;
+    SDL_Surface **frames;
+    int           frame_count;
+    SDL_Texture **textures;
+    int     current_frame;
+    Uint32  last_tick;
+    int     fps;
+} Sequence;
 
-// SDL / GTK Integration
-SDL_Renderer* sdl_get_renderer(void);
-int  sdl_embed_in_gtk(GtkWidget *widget);
-void sdl_draw_frame(void);
-void sdl_restart(GtkWidget *widget);
+// SDL Core
+int sdl_init(GtkWidget *widget);
+int sdl_embed_in_gtk(GtkWidget *widget);
 
-// Texture Management
-void start_load_textures_async(void);
-void load_all_textures(void);
-void sdl_update_textures(void);
-void sdl_free_textures(void);
+// Text rendering
+void draw_centered_text(const char *text);
 
-// Layer Controls
-void set_transparency(guint8 layer_index, int alpha);
-int  get_transparency(guint8 layer_index);
+// Update textures
+SDL_Surface* create_grayscale_surface(SDL_Surface *src);
 
-void set_gray(guint8 layer_index, int gray);
-int  is_layer_gray(int layer_number);
+// Gray surface 
+SDL_Surface* create_grayscale_surface(SDL_Surface *src);
+void* texture_update_thread(void *arg);
+gboolean sdl_finalize_texture_update(gpointer data);
+void update_textures_async(void);
+
+// Init layers 
+void init_layers();
+
+// Setters
+void sdl_set_render_state(RenderState state);
+void sdl_set_layer_modified(int layer_index);
+void sdl_set_layer_alpha(int layer_index, Uint8 alpha);
+void sdl_set_layer_grayscale(int layer_index, int grayscale);
+void sdl_set_layer_speed(int layer_index, double speed);
+
+// Getters general 
+RenderState sdl_get_render_state(void);
+LayerState sdl_get_layer_state(guint8 layer_index);
+
+// Getters FX
+double sdl_get_layer_speed(guint8 layer_index);
+int sdl_get_alpha(guint8 layer_index);
+gboolean sdl_is_layer_gray(guint8 layer_index);
+
+// Render Live
+void sdl_render_live_mode(int advance_frames);
+
+// Sequence
+void free_sequence(Sequence *seq);
+Sequence* update_sequence_texture();
+void sdl_render_playback_mode(int advance_frames);
 
 #endif // SDL_H
 

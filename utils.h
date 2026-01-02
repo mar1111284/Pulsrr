@@ -30,6 +30,13 @@
 #define TIMELINE_PANEL_HEIGHT    200
 #define LOOP_BAR_WIDTH             6
 
+// Thread / progress
+typedef struct {
+    GtkWidget *progress_bar;
+    double     fraction;
+    char      *text;
+} ProgressUpdate;
+
 // Global Types
 typedef struct {
     GtkTextView *log_view;
@@ -64,7 +71,7 @@ extern GtkWidget *global_modal_layer;
 // Utility Functions
 void add_main_log(const char *message);
 
-// Getter
+// Acessor general
 MainUI* main_ui_get(void);
 
 // Frame / File management
@@ -83,6 +90,7 @@ int copy_file(const char *src, const char *dst);
 void copy_directory(const char *src, const char *dst);
 void cleanup_frames_folders(void);
 int get_number_of_sequences(void);
+int count_files_in_dir(const char *path);
 
 // Sequence / Video management
 int encode_sequence_with_ffmpeg(int sequence_number, int fps, int width, int height);

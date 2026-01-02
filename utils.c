@@ -18,6 +18,21 @@
 // Global MainUI instance
 MainUI g_main_ui = {0};
 
+// Helper: count files in a folder
+int count_files_in_dir(const char *path) {
+    DIR *dir = opendir(path);
+    if (!dir) return 0;
+
+    struct dirent *entry;
+    int count = 0;
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_type == DT_REG) count++;
+    }
+    closedir(dir);
+    return count;
+}
+
 MainUI* main_ui_get(void) {
     return &g_main_ui;
 }
@@ -162,7 +177,11 @@ void on_modal_back_clicked(GtkButton *button, gpointer user_data) {
     for (GList *l = children; l != NULL; l = l->next) gtk_widget_destroy(GTK_WIDGET(l->data));
     g_list_free(children);
 
-    sdl_set_playing(1);
+    // Only play if frames exist or not loading
+    if (sdl_get_render_state() != RENDER_STATE_NO_FRAMES &&
+        sdl_get_render_state() != RENDER_STATE_LOADING) {
+        sdl_set_render_state(RENDER_STATE_PLAY);
+    }
 }
 
 // File info utilities

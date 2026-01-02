@@ -1,273 +1,167 @@
-### Major
-- **Full sequencer implementation**
-  - Timeline logic (start / end / loop)
-  - Playback synchronization
-  - Export pipeline integration
-  - Music handler
-  - Crop, Cut function ?
+Quick overview:
 
-### Minor
-- **X11 warning on app start**
-  - Investigate GTK widget realization vs SDL embedding
-  - Ensure SDL starts only after valid XID
+its a video mixer. it takes between 1 and 4 videos and mix it, allow user to apply some filter on each layer (like speed, grayscale yes/no, alpha transparency (0-255).
 
-- **Modal load safety**
-  - Make application insensitive during frame loading
-  - Prevent crashes caused by user interaction during processing
+How it works ?
 
-- **Additional video filters**
-  - Threshold
-  - Invert
-  - Extendable filter pipeline
+I use GTK with SDL, i mean Gtk embed an SDL window on x11 envirnoment (not working on wayland). SDL has 2 mode: Live mode and playback mode, live mode allow user to create each sequence and see the render on screen. Lets start by the Live mode workflow :  User Start the software. he cans load between 1-4 videos by click on Load button of each layer. it open a load layer modal, on this modal user can set the quality (scale) and FPS of each layer independantly. then click on export. on export clicked those videos are converted to frames by ffmpeg in respected folder Frames_1 Frames_2 Frames_3 Frames_4 (folder can be empty if nothing loaded by user). once frames well loaded user can click on FX button of each layer to set some FX. then user click on Update button. this trigger and SDL function who preload all the frames for efficient rendering and display the render loop when loading finish.
 
-- **SDL loading progress**
-  - Progress bar during frame loading
-  - SDL-side feedback for long load times
+if user is happy with the sequence he created he can click on Add sequence button. this will open a modal asking user for sequence duration and quality (scale) then click on add sequence. it will create and store the sequence 
 
-- **Project structure cleanup**
-  - Move all source files into `src/`
-  - Fonts into `fonts/`
-  - Assets into dedicated folders
-  - General repository hygiene
+to see all sequence added he can click on playback button, this put SDL on playback mode and display the final render (all sequence in a row with effect applied) user can download the finale render. or switch to live mode again and create more sequences 
+
+Modal_fx;
+- Add grab_add & grab_remove to focus on modal, set the button sensitive FALSE while FX processing
+
+layer loading:
+- Error handling with the loading form (file format incorect etc...)
+- How should the export thread control FFmpeg and cancellation?
+
+Layer component:
+
+- the width of the preview is a bit too big, reduce it. (see bg duplication)
+
+Sequence component:
+
+- the height is too big (bg duplication) need to decrease it a bit.
+
+Modal Add_Sequence: 
+- Add grab_add & grab_remove to focus on modal, set the button sensitive FALSE while FX processing
 
 
-main.c
+# Add Sequence – Test Plan & User Cases
 
-#include <gtk/gtk.h>
-#include <stdlib.h>
-#include <time.h>
-#include <stdio.h>
+This part defines all manual test cases required to validate the **Add Sequence** feature, including UI safety, frame generation, FX consistency, and failure handling.
 
-#include "sdl.h"
-#include "utils.h"
-#include "layer.h"
-#include "aphorism.h"
-#include "sequencer.h"
-#include "screen_panel.h"
-#include "sdl_utilities.h"
-#include "modal_add_sequence.h"
+---
 
-// Global
-SelectedBar selected_bar = BAR_NONE;
-GtkWidget *global_modal_layer = NULL;
+## 1. Modal & UI Safety
 
-// Callbacks
-static void on_update_render_clicked(GtkButton *button, gpointer user_data)
-{
-	(void)button;
-	(void)user_data;
-	start_load_textures_async();
-}
+- Modal blocks **all interactions** with the rest of the application while processing
+- Back button is disabled during processing
+- Export button is disabled during processing
+- User cannot interact with any widget during generation
+- No crash if user clicks rapidly before processing starts
+- UI is fully re-enabled after completion or abort
+- Progress bar updates correctly and never freezes
+- Modal log auto-scrolls to latest entry
+- No GTK warnings or critical errors during modal lifetime
 
-static void on_app_destroy(GtkWidget *widget, gpointer data)
-{
-    (void)widget;
-    (void)data;
+---
 
-    sdl_set_playing(0);
-    cleanup_frames_folders();
-    gtk_main_quit();
-}
+## 2. Sequence Folder Creation
 
-static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data)
-{
-    (void)widget;
-    (void)user_data;
+- `sequences/` directory is created if missing
+- `sequence_X/` index increments correctly
+- Existing sequences are never overwritten
+- Folder structure is exactly:
 
-    const int step = 5;
+sequences/
+sequence_X/
+Frames_1/
+Frames_2/
+Frames_3/
+Frames_4/
+fx.txt
+mixed_frames/ (only if generation succeeds)
+sequence_X.mp4 (only if encoding succeeds)
 
-    switch (event->keyval) {
-    
-	case GDK_KEY_Escape:
-		gtk_widget_destroy(widget);
-		return TRUE;
-		
-    case GDK_KEY_Left:
-        if (selected_bar == BAR_START) {
-            left_bar_x = MAX(0, left_bar_x - step);
-            gtk_widget_set_margin_start(loop_start_box, left_bar_x);
-        } else if (selected_bar == BAR_END) {
-            right_bar_x = MAX(0, right_bar_x - step);
-            gtk_widget_set_margin_start(loop_end_box, right_bar_x);
-        }
-        break;
 
-    case GDK_KEY_Right:
-        if (selected_bar == BAR_START) {
-            left_bar_x = MIN(right_bar_x - LOOP_BAR_WIDTH, left_bar_x + step);
-            gtk_widget_set_margin_start(loop_start_box, left_bar_x);
-        } else if (selected_bar == BAR_END) {
-            right_bar_x = MIN(sequences_overlay_width - LOOP_BAR_WIDTH, right_bar_x + step);
-            gtk_widget_set_margin_start(loop_end_box, right_bar_x);
-        }
-        break;
+---
 
-    default:
-        break;
-    }
+## 3. Layer Presence & Validation
 
-    gtk_widget_queue_draw(loop_start_box);
-    gtk_widget_queue_draw(loop_end_box);
+- Layer with **no frames**:
+  - Skipped entirely during mixing
+  - Warning logged in modal log
+  - Still written to `fx.txt` with default values
+- Layer with frames but **alpha = 0**:
+  - Loaded normally
+  - Blended correctly (invisible but valid)
+- Layer with grayscale enabled:
+  - Uses grayscale frames only
+- Layer speed < 1.0:
+  - Frame repetition logic is correct
+- Layer speed ≥ 1.0:
+  - Frame skipping logic is correct
+- Missing `Frames_X` directory:
+  - Logged
+  - Layer skipped safely
 
-    return TRUE;
-}
+---
 
-// Main
-int main(int argc, char *argv[])
-{
-    srand((unsigned int)time(NULL));
-    gtk_init(&argc, &argv);
+## 4. Abort Conditions
 
-    // Window
-    GtkWidget *win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    gtk_window_set_title(GTK_WINDOW(win), "Pulsrr Sequencer");
-    gtk_window_set_default_size(GTK_WINDOW(win),MINIMAL_WINDOW_WIDTH,MINIMAL_WINDOW_HEIGHT);
-    gtk_window_set_resizable(GTK_WINDOW(win), FALSE);
-    g_signal_connect(win, "destroy", G_CALLBACK(on_app_destroy), NULL);
-    
-    // Set window icon
-	GError *icon_err = NULL;
-	if (!gtk_window_set_icon_from_file(GTK_WINDOW(win), "icon.png", &icon_err)) {
-		g_printerr("Failed to load icon: %s\n", icon_err->message);
-		g_clear_error(&icon_err);
-	}
+- **All layers empty or invalid**:
+  - Warning shown in modal log
+  - Process aborts immediately
+  - No `mixed_frames/` directory created
+  - No mp4 generated
+  - `fx.txt` still created
+- Frame loading failure (`IMG_Load` fails):
+  - Frame skipped
+  - No crash
+- ffmpeg missing or encoding failure:
+  - Logged
+  - No crash
 
-    // Overlay
-    GtkWidget *overlay = gtk_overlay_new();
-    gtk_container_add(GTK_CONTAINER(win), overlay);
+---
 
-    // Main container
-    GtkWidget *main_hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-    gtk_widget_set_name(main_hbox, "main-container");
-    gtk_overlay_add_overlay(GTK_OVERLAY(overlay), main_hbox);
+## 5. FX Consistency
 
-    // Modal layer
-    GtkWidget *modal_layer = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-    gtk_widget_set_name(modal_layer, "modal-layer");
-    gtk_widget_set_halign(modal_layer, GTK_ALIGN_CENTER);
-    gtk_widget_set_valign(modal_layer, GTK_ALIGN_CENTER);
-    gtk_widget_set_hexpand(modal_layer, TRUE);
-    gtk_widget_set_vexpand(modal_layer, TRUE);
-    gtk_overlay_add_overlay(GTK_OVERLAY(overlay), modal_layer);
-    gtk_widget_hide(modal_layer);
-    global_modal_layer = modal_layer;
+- `fx.txt` always contains **all 4 layers**
+- FX values match live state at export time:
+  - speed
+  - gray (0 or 1)
+  - alpha
+- Empty layers still appear with default FX values
+- No runtime/live memory is used during rendering (FX read only from `fx.txt`)
 
-    // Left container
-    GtkWidget *left_container = gtk_box_new(GTK_ORIENTATION_VERTICAL, 16);
-    gtk_widget_set_name(left_container, "left-container");
-    gtk_widget_set_size_request(left_container, LEFT_CONTAINER_WIDTH, -1);
-    gtk_widget_set_hexpand(left_container, FALSE);
-    gtk_widget_set_vexpand(left_container, TRUE);
-    gtk_box_pack_start(GTK_BOX(main_hbox), left_container, FALSE, FALSE, 0);
+---
 
-    // Logo
-    GdkPixbuf *pixbuf = gdk_pixbuf_new_from_file_at_scale("logo3.png", LOGO_WIDTH, -1, TRUE, NULL);
-    if (pixbuf) {
-        GtkWidget *logo = gtk_image_new_from_pixbuf(pixbuf);
-        g_object_unref(pixbuf);
-        gtk_widget_set_halign(logo, GTK_ALIGN_CENTER);
-        gtk_box_pack_start(GTK_BOX(left_container), logo, FALSE, FALSE, 0);
-    }
+## 6. Frame Generation
 
-    // Aphorism
-    gtk_box_pack_start(GTK_BOX(left_container),create_aphorism_widget(),FALSE, FALSE, 0);
+- Mixed frame resolution matches selected scale
+- Background is solid black
+- Layers are blended in correct order (layer 0 → layer 3)
+- Frame naming is continuous:
+  - `frame_00001.png` → `frame_XXXXX.png`
+- Frame count = `duration × 25 FPS`
+- All SDL surfaces are freed (no memory leaks)
 
-    // Buttons
-    GtkWidget *button_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
-    gtk_widget_set_name(button_row, "button-row");
-    gtk_widget_set_size_request(button_row,LEFT_CONTAINER_WIDTH,BUTTON_TOP_CONTROL_HEIGHT);
-    gtk_box_pack_start(GTK_BOX(left_container), button_row, FALSE, FALSE, 0);
+---
 
-    GtkWidget *btn_create = gtk_button_new_with_label("ADD SEQ.");
-    GtkWidget *btn_update = gtk_button_new_with_label("UPDATE");
+## 7. Video Encoding
 
-    gtk_widget_set_name(btn_create, "btn-add-seq");
-    gtk_widget_set_name(btn_update, "btn-update-render");
+- ffmpeg is executed only if `mixed_frames/` exists
+- mp4 resolution matches mixed frames
+- mp4 duration matches expected length
+- Encoding success is logged
+- Encoding failure is logged and does not crash
 
-    gtk_widget_set_size_request(btn_create,BUTTON_TOP_CONTROL_WIDTH,BUTTON_TOP_CONTROL_HEIGHT);
-    gtk_widget_set_size_request(btn_update,BUTTON_TOP_CONTROL_WIDTH,BUTTON_TOP_CONTROL_HEIGHT);
-    
-    gtk_box_pack_start(GTK_BOX(button_row), btn_create, TRUE, TRUE, 0);
-    gtk_box_pack_start(GTK_BOX(button_row), btn_update, TRUE, TRUE, 0);
+---
 
-	// Log area (for future use)
-	GtkWidget *log_scroll = gtk_scrolled_window_new(NULL, NULL);
-	gtk_widget_set_name(log_scroll, "main-log-scroll");
-	gtk_widget_set_size_request(log_scroll, LEFT_CONTAINER_WIDTH, 60);
-	gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(log_scroll),
-		                           GTK_POLICY_AUTOMATIC,
-		                           GTK_POLICY_AUTOMATIC);
+## 8. Stress & Edge Cases
 
-	// Text view
-	GtkWidget *log_view = gtk_text_view_new();
-	gtk_widget_set_name(log_view, "main-log-view");
-	gtk_text_view_set_editable(GTK_TEXT_VIEW(log_view), FALSE);
-	gtk_text_view_set_cursor_visible(GTK_TEXT_VIEW(log_view), FALSE);
-	gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(log_view), GTK_WRAP_WORD_CHAR);
-	GtkTextBuffer *log_buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(log_view));
-	gtk_text_buffer_set_text(log_buffer, "[LOG] App Start.\n", -1);
-	gtk_container_add(GTK_CONTAINER(log_scroll), log_view);
+- Minimum duration
+- Maximum duration
+- Very high number of frames per layer
+- Mixed speeds (0.25, 0.5, 1, 2, 4)
+- Grayscale + alpha combined
+- One valid layer, three empty layers
+- All layers valid but extremely short sequences
 
-    // Layers
-	gtk_box_pack_start(GTK_BOX(left_container), create_layer_component(0), FALSE, FALSE, 0);
-	gtk_box_pack_start(GTK_BOX(left_container), create_layer_component(1), FALSE, FALSE, 0);
-	gtk_box_pack_start(GTK_BOX(left_container), create_layer_component(2), FALSE, FALSE, 0);
-	gtk_box_pack_start(GTK_BOX(left_container), create_layer_component(3), FALSE, FALSE, 0);
-	gtk_box_pack_start(GTK_BOX(left_container), log_scroll, FALSE, FALSE, 0);
+---
 
-    // Version
-    GtkWidget *version_label = gtk_label_new("Version 0.0.1 by Rekav");
-    gtk_widget_set_name(version_label, "version-label");
-    gtk_widget_set_halign(version_label, GTK_ALIGN_CENTER);
-    gtk_box_pack_end(GTK_BOX(left_container), version_label, FALSE, FALSE, 0);
+## 9. Behavioral Consistency
 
-    // Right container
-    GtkWidget *right_container = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-    gtk_widget_set_name(right_container, "right-container");
-    gtk_widget_set_hexpand(right_container, TRUE);
-    gtk_widget_set_vexpand(right_container, TRUE);
-    gtk_box_pack_start(GTK_BOX(main_hbox), right_container, TRUE, TRUE, 0);
+- Output behavior matches live mix logic
+- Speed math is identical to SDL live render
+- No dependency on global live render state
+- Deterministic output:
+  - Same inputs always produce the same results
 
-    GtkWidget *render_panel = NULL;
-    GtkWidget *render_ui = create_render_screen(&render_panel);
-    gtk_box_pack_start(GTK_BOX(right_container), render_ui, TRUE, TRUE, 0);
-
-    g_timeout_add(33, sdl_refresh_loop, render_panel);
-
-    gtk_box_pack_start(GTK_BOX(right_container),create_sequencer_component(),FALSE, FALSE, 0);
-    
-    // Populate for later access
-	g_main_ui.log_view = GTK_TEXT_VIEW(log_view);
-	g_main_ui.log_buffer = log_buffer;
-	g_main_ui.main_container = main_hbox;
-
-    // Signals
-    g_signal_connect(btn_update, "clicked",G_CALLBACK(on_update_render_clicked), render_panel);
-    g_signal_connect(btn_create, "clicked",G_CALLBACK(on_add_button_clicked),main_hbox);
-    
-
-    gtk_widget_add_events(win, GDK_KEY_PRESS_MASK);
-    g_signal_connect(win, "key-press-event",G_CALLBACK(on_key_press), NULL);
-
-    // CSS
-    GtkCssProvider *css = gtk_css_provider_new();
-    GError *gerr = NULL;
-
-    if (!gtk_css_provider_load_from_path(css, "style.css", &gerr)) {
-        g_printerr("Failed to load style.css: %s\n", gerr->message);
-        g_clear_error(&gerr);
-    } else {
-        gtk_style_context_add_provider_for_screen(
-            gdk_screen_get_default(),
-            GTK_STYLE_PROVIDER(css),
-            GTK_STYLE_PROVIDER_PRIORITY_USER
-        );
-    }
-
-    gtk_widget_show_all(win);
-    gtk_main();
-    return 0;
-}
+---
 
 
 

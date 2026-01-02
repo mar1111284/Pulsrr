@@ -15,8 +15,8 @@ extern int sequences_overlay_width;
 
 // Callbacks
 void on_overlay_size_allocate(GtkWidget *widget,GtkAllocation *allocation,gpointer user_data);
-
 gboolean on_bar_clicked(GtkWidget *widget,GdkEventButton *event,gpointer user_data);
+void update_sequencer(void);
 
 // Sequence widget helpers
 GtkWidget* create_sequence_widget_css(const char *sequence_folder);
