@@ -1,7 +1,8 @@
-#ifndef LAYER_H
-#define LAYER_H
+#ifndef COMPONENT_LAYER_H
+#define COMPONENT_LAYER_H
 
 #include <gtk/gtk.h>
+#include "../utils/utils.h"
 
 typedef struct {
     guint8 layer_index;

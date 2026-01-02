@@ -1,6 +1,5 @@
-#include "utils.h"
-#include "sdl.h"
-#include "sdl_utilities.h"
+#include "utils.h"              
+#include "../sdl/sdl.h"       
 
 #include <gtk/gtk.h>
 #include <glib.h>
@@ -15,8 +14,55 @@
 #include <limits.h>
 #include <unistd.h>
 
-// Global MainUI instance
-MainUI g_main_ui = {0};
+
+static AppContext *g_app_ctx = NULL;
+static AppPaths app_paths;
+
+void init_app_paths(const char *argv0)
+{
+    char exe_path[PATH_MAX];
+    ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+    if (len > 0) {
+        exe_path[len] = '\0';
+        app_paths.base_dir = g_path_get_dirname(exe_path);
+    } else {
+        app_paths.base_dir = g_get_current_dir();
+    }
+
+    app_paths.media_dir     = g_build_filename(app_paths.base_dir, "media", NULL);
+    app_paths.styles_dir    = g_build_filename(app_paths.base_dir, "src", "styles", NULL);
+    app_paths.sequences_dir = g_build_filename(app_paths.base_dir, "sequences", NULL);
+}
+
+const AppPaths *get_app_paths(void)
+{
+    return &app_paths;
+}
+
+void free_app_paths(void)
+{
+    g_free(app_paths.base_dir);
+    g_free(app_paths.media_dir);
+    g_free(app_paths.styles_dir);
+    g_free(app_paths.sequences_dir);
+}
+
+
+AppContext* get_app_ctx(void) {
+    if (!g_app_ctx) {
+        g_printerr("[ERROR] AppContext not initialized!\n");
+        exit(EXIT_FAILURE);
+    }
+    return g_app_ctx;
+}
+
+void set_app_ctx(AppContext *ctx) {
+    if (g_app_ctx) {
+        g_printerr("[WARN] AppContext already set!\n");
+        return;
+    }
+    g_app_ctx = ctx;
+}
 
 // Helper: count files in a folder
 int count_files_in_dir(const char *path) {
@@ -33,27 +79,29 @@ int count_files_in_dir(const char *path) {
     return count;
 }
 
-MainUI* main_ui_get(void) {
-    return &g_main_ui;
-}
-
 // Thread-safe logging
-static gboolean add_log_idle(gpointer data) {
+static gboolean add_log_idle(gpointer data)
+{
     LogIdleData *ld = (LogIdleData *)data;
-    MainUI *ui = main_ui_get();
-    if (ui && ui->log_buffer) {
+    AppContext *app_ctx = get_app_ctx();
+    MainUI *ui = &app_ctx->main_ui;
+
+    if (ui->log_buffer && ui->log_view) {
         GtkTextIter end;
         gtk_text_buffer_get_end_iter(ui->log_buffer, &end);
         gtk_text_buffer_insert(ui->log_buffer, &end, ld->msg, -1);
         gtk_text_buffer_insert(ui->log_buffer, &end, "\n", -1);
 
-        GtkAdjustment *adj = gtk_scrollable_get_vadjustment(GTK_SCROLLABLE(ui->log_view));
+        GtkAdjustment *adj =
+            gtk_scrollable_get_vadjustment(GTK_SCROLLABLE(ui->log_view));
         gtk_adjustment_set_value(adj, gtk_adjustment_get_upper(adj));
     }
+
     g_free(ld->msg);
     g_free(ld);
     return G_SOURCE_REMOVE;
 }
+
 
 void add_main_log(const char *message) {
     if (!message) return;
@@ -178,7 +226,7 @@ void on_modal_back_clicked(GtkButton *button, gpointer user_data) {
     g_list_free(children);
 
     // Only play if frames exist or not loading
-    if (sdl_get_render_state() != RENDER_STATE_NO_FRAMES &&
+    if (sdl_get_render_state() != RENDER_STATE_IDLE &&
         sdl_get_render_state() != RENDER_STATE_LOADING) {
         sdl_set_render_state(RENDER_STATE_PLAY);
     }

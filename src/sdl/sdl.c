@@ -1,13 +1,14 @@
+/* SDL engine */
 #include "sdl.h"
+
+/* System & libraries */
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
-#include <SDL_ttf.h>
+#include <SDL2/SDL_ttf.h>
 #include <gdk/gdkx.h>
 #include <stdint.h>
 #include <pthread.h>
 #include <string.h>
-#include "utils.h"
-#include "sdl_utilities.h"
 #include <dirent.h>
 #include <stdio.h>
 #include <sys/stat.h>
@@ -22,7 +23,6 @@ SDL g_sdl = {
     .draw_source_id = 0,
     .screen_mode = LIVE_MODE
 };
-
 
 void free_sequence(Sequence *seq) {
     if (!seq) return;
@@ -54,8 +54,6 @@ Sequence* update_sequence_texture() {
 
     gchar *sequences_dir = "sequences";
     seq->root_folder = g_strdup(sequences_dir);
-
-    // Temporary array to store all SDL_Surface*
     GPtrArray *all_frames = g_ptr_array_new();
 
     DIR *dir = opendir(sequences_dir);
@@ -118,9 +116,6 @@ Sequence* update_sequence_texture() {
 
     g_ptr_array_free(all_frames, TRUE);
     g_sdl.sequence = seq;
-
-    g_print("[PLAYBACK] Loaded %d frames from sequences\n", seq->frame_count);
-
     return seq;
 }
 
@@ -132,7 +127,6 @@ void sdl_render_playback_mode(int advance_frames) {
     Uint32 now = SDL_GetTicks();
     Uint32 base_delay = 1000 / seq->fps;
 
-    //SDL_Surface *surf = seq->frames[seq->current_frame];
     SDL_Texture *tex = seq->textures[seq->current_frame];
 
     if (!tex) {
@@ -153,8 +147,6 @@ void sdl_render_playback_mode(int advance_frames) {
     }
 }
 
-
-
 RenderState sdl_get_render_state(void)
 {
     return g_sdl.render_state;
@@ -174,14 +166,12 @@ gboolean sdl_is_layer_gray(guint8 layer_index) {
     return ly->grayscale ? TRUE : FALSE;
 }
 
-
 void sdl_set_layer_grayscale(int layer_index, int grayscale)
 {
     if (layer_index < 0 || layer_index >= 4 || !g_sdl.layers[layer_index])
         return;
 
     g_sdl.layers[layer_index]->grayscale = grayscale ? 1 : 0;
-    g_print("[SDL] Layer %d grayscale set to %d\n", layer_index, g_sdl.layers[layer_index]->grayscale);
 }
 
 
@@ -230,8 +220,6 @@ gboolean sdl_finalize_texture_update(gpointer data)
     (void)data;
 
     g_print("[FINALIZE] Creating textures on main thread\n");
-
-    int any_ready = 0;
 
     for (int i = 0; i < 4; i++) {
         Layer *ly = g_sdl.layers[i];
@@ -286,14 +274,10 @@ gboolean sdl_finalize_texture_update(gpointer data)
         ly->last_tick = SDL_GetTicks();
         ly->state = LAYER_UP_TO_DATE;
 
-        any_ready = 1;
-
         g_print("[FINALIZE] Layer %d UP_TO_DATE (%d frames)\n", i, ly->frame_count);
     }
 
-    sdl_set_render_state(
-        any_ready ? RENDER_STATE_PLAY : RENDER_STATE_NO_FRAMES
-    );
+    sdl_set_render_state(RENDER_STATE_PLAY);
 
     g_print("[FINALIZE] Render state updated\n");
 
@@ -303,6 +287,7 @@ gboolean sdl_finalize_texture_update(gpointer data)
 void* texture_update_thread(void *arg)
 {
     (void)arg;
+	sdl_set_render_state(RENDER_STATE_LOADING);
 
     g_print("[THREAD] Texture update thread started\n");
 
@@ -443,9 +428,10 @@ void sdl_set_render_state(RenderState state) {
 void draw_centered_text(const char *text)
 {
     static TTF_Font *font = NULL;
-
+    const AppPaths *paths = get_app_paths();
+	char *font_path = g_build_filename(paths->media_dir,"DS-TERM.TTF",NULL);
     if (!font) {
-        font = TTF_OpenFont("DS-TERM.TTF", 24);
+        font = TTF_OpenFont(font_path, 24);
         if (!font) {
             g_printerr("[SDL] Failed to load font\n");
             return;
@@ -637,6 +623,34 @@ void sdl_render_live_mode(int advance_frames)
     }
 }
 
+// Returns true if at least one live layer has frames loaded
+bool sdl_has_live_texture(void)
+{
+    for (int i = 0; i < MAX_LAYERS; i++) {
+        Layer *layer = g_sdl.layers[i];
+        if (!layer) continue;
+
+        // Only count layers that have textures loaded
+        if (layer->textures && layer->frame_count > 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Returns true if at least one sequence has been created
+bool sdl_has_sequence_texture(void)
+{
+    Sequence *seq = g_sdl.sequence;
+    if (!seq) return false;
+
+    if (seq->textures && seq->frame_count > 0) {
+        return true;
+    }
+
+    return false;
+}
+
 
 /* -------------------------------------------------- */
 /* Draw loop                                          */
@@ -653,12 +667,12 @@ gboolean sdl_draw_tick(gpointer data)
     SDL_RenderClear(g_sdl.renderer);
 
 	if (g_sdl.screen_mode == LIVE_MODE) {
-
+        
 		switch (g_sdl.render_state) {
-		    case RENDER_STATE_NO_FRAMES:
-		        draw_centered_text("LIVE MODE (No frames loaded)");
-		        break;
-
+		
+			case RENDER_STATE_IDLE:
+				break;
+		
 		    case RENDER_STATE_LOADING:
 		        draw_centered_text("LOADING FRAMES...");
 		        break;
@@ -671,13 +685,17 @@ gboolean sdl_draw_tick(gpointer data)
 		        sdl_render_live_mode(0); // do not advance frames
 		        break;
 		}
+		
+		if (!sdl_has_live_texture() && g_sdl.render_state == RENDER_STATE_IDLE) {
+            draw_centered_text("LIVE MODE (No frames loaded)");
+        }
 
 	} else { // PLAYBACK_MODE
-
+        
 		switch (g_sdl.render_state) {
-		    case RENDER_STATE_NO_FRAMES:
-		        draw_centered_text("PLAYBACK MODE (No frames loaded)");
-		        break;
+		
+			case RENDER_STATE_IDLE:
+				break;
 
 		    case RENDER_STATE_LOADING:
 		        draw_centered_text("LOADING SEQUENCE FRAMES...");
@@ -691,6 +709,10 @@ gboolean sdl_draw_tick(gpointer data)
 		        sdl_render_playback_mode(0); // do not advance frames
 		        break;
 		}
+		
+		if (!sdl_has_sequence_texture()&& g_sdl.render_state == RENDER_STATE_IDLE) {
+            draw_centered_text("PLAYBACK MODE (No sequence loaded)");
+        }
 
 	}
 
@@ -710,7 +732,7 @@ gboolean sdl_draw_tick(gpointer data)
 int sdl_embed_in_gtk(GtkWidget *widget)
 {
     g_print("[SDL] embed called\n");
-
+	sdl_set_render_state(RENDER_STATE_IDLE);
     if (!sdl_init(widget))
         return 0;
 

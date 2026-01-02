@@ -1,4 +1,5 @@
-#include "aphorism.h"
+#include "../utils/utils.h"
+#include "component_aphorism.h"
 #include <glib.h>
 
 AphorismErrorCode get_random_aphorism(const char *filename, char **out_str) {
@@ -30,7 +31,12 @@ AphorismErrorCode get_random_aphorism(const char *filename, char **out_str) {
 
 GtkWidget *create_aphorism_widget(void) {
     char *aphorism = NULL;
-    AphorismErrorCode err = get_random_aphorism("aphorisms.txt", &aphorism);
+	const AppPaths *paths = get_app_paths();
+	char *aph_path = g_build_filename(paths->media_dir, "aphorisms.txt", NULL);
+
+	AphorismErrorCode err = get_random_aphorism(aph_path, &aphorism);
+
+	g_free(aph_path);
 
     /* Container */
     GtkWidget *aphorism_box = gtk_event_box_new();

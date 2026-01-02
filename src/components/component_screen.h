@@ -1,12 +1,10 @@
-#ifndef SCREEN_PANEL_H
-#define SCREEN_PANEL_H
+#ifndef COMPONENT_SCREEN_H
+#define COMPONENT_SCREEN_H
 
 #include <gtk/gtk.h>
 
 // Forward declaration for SDL functions
 void on_drawarea_map(GtkWidget *widget, gpointer data);
-void on_play_clicked(GtkWidget *widget, gpointer user_data);
-void on_pause_clicked(GtkWidget *widget, gpointer user_data);
 void ui_reconcile_mode(void);
 gboolean sdl_refresh_loop(gpointer data);
 

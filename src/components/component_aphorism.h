@@ -1,5 +1,5 @@
-#ifndef APHORISM_H
-#define APHORISM_H
+#ifndef COMPONENT_APHORISM_H
+#define COMPONENT_APHORISM_H
 
 #include <gtk/gtk.h>
 

@@ -1,14 +1,53 @@
+# Compiler
 CC = gcc
 
 # Debug flags
 CFLAGS = -g -O0 -Wall `pkg-config --cflags gtk+-x11-3.0 sdl2 SDL2_image SDL2_ttf`
 LIBS   = `pkg-config --libs gtk+-x11-3.0 sdl2 SDL2_image SDL2_ttf`
 
-all: pulsrr
+# Source directories
+SRC_DIR = src
+SDL_DIR = $(SRC_DIR)/sdl
+MODALS_DIR = $(SRC_DIR)/modals
+COMP_DIR = $(SRC_DIR)/components
+UTILS_DIR = $(SRC_DIR)/utils
 
-pulsrr: main.c sdl.c sdl_utilities.c modal_add_sequence.c modal_add_sequence.h modal_download.c modal_download.h sdl_utilities.h utils.c layer.c modal_load.c modal_fx.c screen_panel.c screen_panel.h aphorism.c sequencer.c sequencer.h aphorism.h modal_fx.h sdl.h utils.h layer.h modal_load.h
-	$(CC) $(CFLAGS) main.c sdl.c utils.c layer.c sdl_utilities.c modal_load.c modal_add_sequence.c modal_download.c screen_panel.c sequencer.c modal_fx.c aphorism.c -o pulsrr $(LIBS)
+# Source files
+SRCS = $(SRC_DIR)/main.c \
+       $(SDL_DIR)/sdl.c \
+       $(UTILS_DIR)/utils.c \
+       $(COMP_DIR)/component_layer.c \
+       $(COMP_DIR)/component_sequencer.c \
+       $(COMP_DIR)/component_screen.c \
+       $(COMP_DIR)/component_aphorism.c \
+       $(MODALS_DIR)/modal_add_sequence.c \
+       $(MODALS_DIR)/modal_download.c \
+       $(MODALS_DIR)/modal_fx.c \
+       $(MODALS_DIR)/modal_load_video.c \
+       $(COMP_DIR)/component_layer.c \
 
+# Object files (map .c to .o in build/)
+BUILD_DIR = build
+OBJS = $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.o, $(SRCS))
+
+# Executable
+TARGET = pulsrr
+
+# Default target
+all: $(BUILD_DIR) $(TARGET)
+
+# Build executable
+$(TARGET): $(OBJS)
+	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
+
+# Build object files
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Clean
 clean:
-	rm -f pulsrr
+	rm -rf $(BUILD_DIR) $(TARGET)
+
+.PHONY: all clean
 

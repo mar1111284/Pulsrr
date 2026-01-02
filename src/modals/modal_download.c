@@ -145,7 +145,7 @@ static gpointer download_worker(gpointer data)
         temp_files = g_list_append(temp_files, g_strdup(temp_output));
 
         // Log finished
-        char finished_msg[128];
+        char finished_msg[512];
         snprintf(finished_msg, sizeof(finished_msg), "[INFO] Finished sequence %d -> %s", i + 1, temp_output);
 
         ProgressUpdate *update = g_new0(ProgressUpdate, 1);
@@ -227,15 +227,17 @@ static gpointer download_worker(gpointer data)
 
 
 void on_download_button_clicked(GtkButton *button, gpointer user_data) {
+
+	AppContext *app_ctx = get_app_ctx();
 	
 	// Only pause if frames exist or not loading
-    if (sdl_get_render_state() != RENDER_STATE_NO_FRAMES &&
+    if (sdl_get_render_state() != RENDER_STATE_IDLE &&
         sdl_get_render_state() != RENDER_STATE_LOADING) {
         sdl_set_render_state(RENDER_STATE_PAUSE);
     }
 
 	// Clear previous content if any
-	GList *children = gtk_container_get_children(GTK_CONTAINER(global_modal_layer));
+	GList *children = gtk_container_get_children(GTK_CONTAINER(app_ctx->modal_layer));
 	for (GList *iter = children; iter != NULL; iter = iter->next) {
 	gtk_widget_destroy(GTK_WIDGET(iter->data));
 	}
@@ -355,10 +357,10 @@ void on_download_button_clicked(GtkButton *button, gpointer user_data) {
 	ui->parent_container = black_box;
 
 	g_signal_connect(btn_dl_sequence, "clicked", G_CALLBACK(on_dl_sequence_clicked), ui);
-	g_signal_connect(btn_back, "clicked", G_CALLBACK(on_modal_dl_back_clicked), global_modal_layer);
+	g_signal_connect(btn_back, "clicked", G_CALLBACK(on_modal_dl_back_clicked), app_ctx->modal_layer);
 
-	gtk_container_add(GTK_CONTAINER(global_modal_layer), black_box);
-	gtk_widget_show_all(global_modal_layer);
+	gtk_container_add(GTK_CONTAINER(app_ctx->modal_layer), black_box);
+	gtk_widget_show_all(app_ctx->modal_layer);
 }
 
 // Called when user clicks "Download"

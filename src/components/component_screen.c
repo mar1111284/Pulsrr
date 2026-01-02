@@ -1,7 +1,7 @@
-#include "utils.h"
-#include "sdl.h"
-#include "screen_panel.h"
-#include "sdl_utilities.h"
+#include "../utils/utils.h"
+#include "../sdl/sdl.h"
+#include "component_screen.h"
+
 
 static GtkWidget *global_render_controls = NULL;
 extern SDL g_sdl;
@@ -9,10 +9,7 @@ extern SDL g_sdl;
 // once mapped embed SDL
 void on_drawarea_map(GtkWidget *widget, gpointer data)
 {
-    g_print("[GTK] Drawing area mapped\n");
-
     sdl_embed_in_gtk(widget);
-
     gtk_widget_queue_resize(widget);
 }
 
@@ -21,9 +18,9 @@ static void on_live_mode_clicked(GtkButton *button, gpointer user_data)
 {
     (void)button;
     (void)user_data;
-
     g_sdl.screen_mode = LIVE_MODE;
-    g_print("[MODE] LIVE\n");
+    add_main_log("[INFO] Switch to Live mixing mode.");
+
 }
 
 // Callback: PLAYBACK mode button
@@ -31,9 +28,8 @@ static void on_playback_mode_clicked(GtkButton *button, gpointer user_data)
 {
     (void)button;
     (void)user_data;
-
     g_sdl.screen_mode = PLAYBACK_MODE;
-    g_print("[MODE] PLAYBACK\n");
+    add_main_log("[INFO] Switch to Playback sequence mode.");
 }
 
 // Create render screen
@@ -64,10 +60,8 @@ GtkWidget* create_render_screen(GtkWidget **out_render_panel)
     gtk_box_pack_start(GTK_BOX(render_control), btn_live, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(render_control), btn_playback, FALSE, FALSE, 0);
 
-    g_signal_connect(btn_live, "clicked",
-                     G_CALLBACK(on_live_mode_clicked), NULL);
-    g_signal_connect(btn_playback, "clicked",
-                     G_CALLBACK(on_playback_mode_clicked), NULL);
+    g_signal_connect(btn_live, "clicked",G_CALLBACK(on_live_mode_clicked), NULL);
+    g_signal_connect(btn_playback, "clicked",G_CALLBACK(on_playback_mode_clicked), NULL);
 
     // Ensure drawing area is realized
     gtk_widget_show(render_panel);
@@ -79,16 +73,5 @@ GtkWidget* create_render_screen(GtkWidget **out_render_panel)
         *out_render_panel = render_panel;
 
     return render_frame;
-}
-
-// Optional: stubs for play/pause buttons if needed later
-void on_play_clicked(GtkWidget *widget, gpointer user_data)
-{
-    g_print("on play clicked\n");
-}
-
-void on_pause_clicked(GtkWidget *widget, gpointer user_data)
-{
-    g_print("on pause clicked\n");
 }
 

@@ -1,12 +1,10 @@
-#ifndef MODAL_LOAD_H
-#define MODAL_LOAD_H
+#ifndef MODAL_LOAD_VIDEO_H
+#define MODAL_LOAD_VIDEO_H
 
 #include <gtk/gtk.h>
-
-#include "utils.h"
-#include "sdl.h"
-#include "layer.h"
-#include "sdl_utilities.h"
+#include "../utils/utils.h"
+#include "../sdl/sdl.h"
+#include "../components/component_layer.h"
 
 // UI data structures
 typedef struct {

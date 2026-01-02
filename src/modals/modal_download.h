@@ -2,9 +2,9 @@
 #define MODAL_DOWNLOAD_H
 
 #include <gtk/gtk.h>
-#include "sdl.h" 
-#include "utils.h"
-#include "sequencer.h"
+#include "../sdl/sdl.h" 
+#include "../utils/utils.h"
+#include "../components/component_sequencer.h"
 #include "modal_add_sequence.h"
 
 typedef struct {

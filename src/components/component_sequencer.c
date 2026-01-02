@@ -1,9 +1,8 @@
-#include "utils.h"
-#include "sequencer.h"
-#include "sdl_utilities.h"
-#include "modal_download.h"
+#include "../utils/utils.h"
+#include "component_sequencer.h"
+#include "../modals/modal_download.h"
 
-// Globals
+// Globals - TO REFACT
 int left_bar_x  = -1;
 int right_bar_x = -1;
 int sequences_overlay_width = 0;
@@ -11,13 +10,14 @@ int sequences_overlay_width = 0;
 GtkWidget *loop_end_box = NULL;
 GtkWidget *loop_start_box = NULL;
 GtkWidget *sequences_box = NULL;
+SelectedBar selected_bar = BAR_NONE;
 
 static gboolean update_sequencer_ui(gpointer user_data);
 
 static void on_sequence_play_clicked(GtkButton *button, gpointer user_data)
 {
     // Only play if frames exist or not loading
-    if (sdl_get_render_state() != RENDER_STATE_NO_FRAMES &&
+    if (sdl_get_render_state() != RENDER_STATE_IDLE &&
         sdl_get_render_state() != RENDER_STATE_LOADING) {
         sdl_set_render_state(RENDER_STATE_PLAY);
     }
@@ -26,7 +26,7 @@ static void on_sequence_play_clicked(GtkButton *button, gpointer user_data)
 static void on_sequence_pause_clicked(GtkButton *button, gpointer user_data)
 {
 	// Only pause if frames exist or not loading
-    if (sdl_get_render_state() != RENDER_STATE_NO_FRAMES &&
+    if (sdl_get_render_state() != RENDER_STATE_IDLE &&
         sdl_get_render_state() != RENDER_STATE_LOADING) {
         sdl_set_render_state(RENDER_STATE_PAUSE);
     }

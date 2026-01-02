@@ -1,5 +1,5 @@
-#ifndef SEQUENCER_H
-#define SEQUENCER_H
+#ifndef COMPONENT_SEQUENCER_H
+#define COMPONENT_SEQUENCER_H
 
 #include <gtk/gtk.h>
 

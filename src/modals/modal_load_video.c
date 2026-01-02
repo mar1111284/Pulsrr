@@ -1,4 +1,4 @@
-#include "modal_load.h"
+#include "modal_load_video.h"
 
 guint estimation_timeout_id = 0;
 
@@ -35,7 +35,6 @@ void update_export_estimation(VideoInfoLabels *labels)
     int orig_w = 0, orig_h = 0;
 
     if (res_str && sscanf(res_str, "%d x %d", &orig_w, &orig_h) == 2) {
-        // ok
     } else {
         orig_w = export_width;
         orig_h = (int)(export_width * 9.0 / 16.0);
@@ -62,12 +61,12 @@ static gboolean idle_set_preview_thumbnail(gpointer user_data) {
 }
 
 static inline gboolean export_done_cb(gpointer data) {
+	AppContext *app_ctx = get_app_ctx();
     ExportContext *ctx = (ExportContext *)data;
     gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(ctx->progress_bar), 1.0);
     gtk_progress_bar_set_text(GTK_PROGRESS_BAR(ctx->progress_bar), "Export completed");
     sdl_set_layer_modified(ctx->layer_index);
-	gtk_grab_remove(global_modal_layer);
-	// After export is done
+	gtk_grab_remove(app_ctx->modal_layer);
     gtk_widget_set_sensitive(ctx->btn_back, TRUE);
     gtk_widget_set_sensitive(ctx->btn_export, TRUE);
     gtk_widget_set_sensitive(GTK_WIDGET(ctx->fps_spin), TRUE);
@@ -77,16 +76,17 @@ static inline gboolean export_done_cb(gpointer data) {
 
 void on_load_button_clicked(GtkButton *button, gpointer user_data) {
 
+	AppContext *app_ctx = get_app_ctx();
 	guint8 layer_index = GPOINTER_TO_INT(user_data);
 	
 	// Only pause if frames exist or not loading
-    if (sdl_get_render_state() != RENDER_STATE_NO_FRAMES &&
+    if (sdl_get_render_state() != RENDER_STATE_IDLE &&
         sdl_get_render_state() != RENDER_STATE_LOADING) {
         sdl_set_render_state(RENDER_STATE_PAUSE);
     }
 
 	// Clear previous content if any
-	GList *children = gtk_container_get_children(GTK_CONTAINER(global_modal_layer));
+	GList *children = gtk_container_get_children(GTK_CONTAINER(app_ctx->modal_layer));
 	for (GList *iter = children; iter != NULL; iter = iter->next) {
 	gtk_widget_destroy(GTK_WIDGET(iter->data));
 	}
@@ -283,7 +283,6 @@ void on_load_button_clicked(GtkButton *button, gpointer user_data) {
 	video_info->scale_combo = GTK_COMBO_BOX_TEXT(scale_combo);
 	video_info->progress_bar = progress_bar;
 	
-
 	// Connect drag-and-drop signal on the black box
 	g_signal_connect(black_box,"drag-data-received",G_CALLBACK(on_drag_data_received),video_info);
 
@@ -301,15 +300,15 @@ void on_load_button_clicked(GtkButton *button, gpointer user_data) {
 	g_signal_connect(fps_spin, "value-changed",G_CALLBACK(on_fps_spin_changed),video_info);
     g_signal_connect(scale_combo,"changed",G_CALLBACK(on_scale_combo_changed),video_info);
 
-	g_signal_connect(btn_back, "clicked", G_CALLBACK(on_export_modal_back_clicked), global_modal_layer);
+	g_signal_connect(btn_back, "clicked", G_CALLBACK(on_export_modal_back_clicked), app_ctx->modal_layer);
 	g_signal_connect(btn_export, "clicked", G_CALLBACK(on_export_clicked), ui);
 
-	gtk_container_add(GTK_CONTAINER(global_modal_layer), black_box);
-	gtk_widget_show_all(global_modal_layer);
+	gtk_container_add(GTK_CONTAINER(app_ctx->modal_layer), black_box);
+	gtk_widget_show_all(app_ctx->modal_layer);
 	
 	// Grab pointer and keyboard so the parent window is blocked
-	gtk_widget_grab_focus(global_modal_layer);
-	gtk_grab_add(global_modal_layer);
+	gtk_widget_grab_focus(app_ctx->modal_layer);
+	gtk_grab_add(app_ctx->modal_layer);
 }
 
 void on_fps_spin_changed(GtkSpinButton *spin, gpointer user_data) {
@@ -536,7 +535,7 @@ void on_export_modal_back_clicked(GtkButton *button, gpointer user_data) {
     g_list_free(children);
 
     // Only play if frames exist or not loading
-    if (sdl_get_render_state() != RENDER_STATE_NO_FRAMES &&
+    if (sdl_get_render_state() != RENDER_STATE_IDLE &&
         sdl_get_render_state() != RENDER_STATE_LOADING) {
         sdl_set_render_state(RENDER_STATE_PLAY);
     }

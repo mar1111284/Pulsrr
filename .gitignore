@@ -1,22 +1,42 @@
-# build artifacts
+# =========================
+# Build artifacts
+# =========================
+/build/
 *.o
 *.out
 *.exe
 pulsrr
 
-# media files
+# =========================
+# Generated video & frames
+# =========================
 *.mp4
+sequences/
+mixed_frames/
+Frames_*/
 
-# specific source files (experiments / scratch)
-flicker_2video.*
-
-# SDL / runtime
+# =========================
+# Logs & runtime junk
+# =========================
 *.log
 
-# editor
+# =========================
+# Editor / IDE backups
+# =========================
+*~
+*.swp
+*.swo
 .vscode/
 .idea/
-*~
 
-# OS
+# =========================
+# OS files
+# =========================
 .DS_Store
+
+# =========================
+# Temporary / cache
+# =========================
+*.tmp
+*.cache
+

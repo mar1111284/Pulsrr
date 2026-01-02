@@ -3,6 +3,7 @@
 
 #include <gtk/gtk.h>
 #include <SDL2/SDL.h>
+#include "../utils/utils.h"
 
 // Render & Layer States
 typedef enum {
@@ -11,10 +12,10 @@ typedef enum {
 } ScreenMode;
 
 typedef enum {
-    RENDER_STATE_NO_FRAMES,
     RENDER_STATE_LOADING,
     RENDER_STATE_PLAY,
     RENDER_STATE_PAUSE,
+    RENDER_STATE_IDLE,
 } RenderState;
 
 typedef enum {
@@ -111,6 +112,11 @@ void sdl_render_live_mode(int advance_frames);
 void free_sequence(Sequence *seq);
 Sequence* update_sequence_texture();
 void sdl_render_playback_mode(int advance_frames);
+
+// Utils 
+bool sdl_has_live_texture(void);
+bool sdl_has_sequence_texture(void);
+
 
 #endif // SDL_H
 

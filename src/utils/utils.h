@@ -4,45 +4,50 @@
 #include <glib.h>
 #include <gtk/gtk.h> 
 
-
-// Constants / Layout Settings
 #define LOGO_WIDTH               185
 #define LOGO_HEIGHT               42
 #define HEADER_HEIGHT             18
-
 #define MINIMAL_WINDOW_WIDTH    1250
 #define MINIMAL_WINDOW_HEIGHT    925
-
 #define LEFT_CONTAINER_WIDTH     250
 #define RIGHT_CONTAINER_WIDTH    950
-
 #define BUTTON_TOP_CONTROL_WIDTH  90
 #define BUTTON_TOP_CONTROL_HEIGHT 40
 #define BUTTON_ROW_HEIGHT         30
-
 #define LAYER_COMPONENT_WIDTH    200
 #define LAYER_COMPONENT_HEIGHT    42
-
 #define PREVIEW_WIDTH            100
 #define PREVIEW_HEIGHT            42
-
 #define MAX_LAYERS                 4
 #define TIMELINE_PANEL_HEIGHT    200
 #define LOOP_BAR_WIDTH             6
+#define SPACING_DEFAULT 16
+#define BUTTON_SPACING 10
 
-// Thread / progress
 typedef struct {
-    GtkWidget *progress_bar;
-    double     fraction;
-    char      *text;
-} ProgressUpdate;
+    char *base_dir;
+    char *media_dir;
+    char *styles_dir;
+    char *sequences_dir;
+} AppPaths;
 
-// Global Types
 typedef struct {
     GtkTextView *log_view;
     GtkTextBuffer *log_buffer;
     GtkWidget *main_container;
 } MainUI;
+
+typedef struct {
+    GtkWidget *window;
+    GtkWidget *modal_layer;
+    MainUI main_ui;
+} AppContext;
+
+typedef struct {
+    GtkWidget *progress_bar;
+    double     fraction;
+    char      *text;
+} ProgressUpdate;
 
 typedef enum { 
     BAR_NONE, 
@@ -63,16 +68,20 @@ typedef struct {
     char *msg;
 } LogIdleData;
 
+// App paths
+const AppPaths *get_app_paths(void);
+void init_app_paths(const char *argv0);
+void free_app_paths(void);
+
+// App context
+AppContext* get_app_ctx(void);
+void set_app_ctx(AppContext *ctx);
+
 // Extern Globals
-extern MainUI g_main_ui;
 extern SelectedBar selected_bar;
-extern GtkWidget *global_modal_layer;
 
 // Utility Functions
 void add_main_log(const char *message);
-
-// Acessor general
-MainUI* main_ui_get(void);
 
 // Frame / File management
 gboolean is_frames_file_empty(int layer_number);

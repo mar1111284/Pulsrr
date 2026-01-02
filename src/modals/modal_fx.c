@@ -1,5 +1,4 @@
 #include "modal_fx.h"
-#include "layer.h"
 
 void on_fx_apply_clicked(GtkButton *button, gpointer user_data) {
 
@@ -19,24 +18,25 @@ void on_fx_apply_clicked(GtkButton *button, gpointer user_data) {
     sdl_set_layer_speed(layer_index, speed);
     
     // Only play if frames exist or not loading
-    if (sdl_get_render_state() != RENDER_STATE_NO_FRAMES &&
+    if (sdl_get_render_state() != RENDER_STATE_IDLE &&
         sdl_get_render_state() != RENDER_STATE_LOADING) {
         sdl_set_render_state(RENDER_STATE_PLAY);
     }
 }
 
 void on_fx_button_clicked(GtkButton *button, gpointer user_data) {
-
+	
+	AppContext *app_ctx = get_app_ctx();
 	guint8 layer_index = GPOINTER_TO_INT(user_data);
 	
     // Only pause if frames exist or not loading
-    if (sdl_get_render_state() != RENDER_STATE_NO_FRAMES &&
+    if (sdl_get_render_state() != RENDER_STATE_IDLE &&
         sdl_get_render_state() != RENDER_STATE_LOADING) {
         sdl_set_render_state(RENDER_STATE_PAUSE);
     }
 
 	// Clear previous content if any
-	GList *children = gtk_container_get_children(GTK_CONTAINER(global_modal_layer));
+	GList *children = gtk_container_get_children(GTK_CONTAINER(app_ctx->modal_layer));
 	for (GList *iter = children; iter != NULL; iter = iter->next) {
 	gtk_widget_destroy(GTK_WIDGET(iter->data));
 	}
@@ -171,8 +171,8 @@ void on_fx_button_clicked(GtkButton *button, gpointer user_data) {
 	fx_widgets->invert_check = GTK_TOGGLE_BUTTON(invert_check);
 
 	g_signal_connect(btn_apply, "clicked", G_CALLBACK(on_fx_apply_clicked), fx_widgets);
-	g_signal_connect(btn_back, "clicked", G_CALLBACK(on_modal_back_clicked), global_modal_layer);
+	g_signal_connect(btn_back, "clicked", G_CALLBACK(on_modal_back_clicked), app_ctx->modal_layer);
 
-	gtk_container_add(GTK_CONTAINER(global_modal_layer), black_box);
-	gtk_widget_show_all(global_modal_layer);
+	gtk_container_add(GTK_CONTAINER(app_ctx->modal_layer), black_box);
+	gtk_widget_show_all(app_ctx->modal_layer);
 }

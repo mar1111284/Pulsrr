@@ -1,10 +1,15 @@
-#include "utils.h"
-#include "layer.h"
-#include "modal_fx.h"
-#include "sdl.h"
-#include "modal_load.h"
+/* Components */
+#include "component_layer.h"
 
-// Globals
+/* Modals */
+#include "../modals/modal_fx.h"
+#include "../modals/modal_load_video.h"
+
+/* SDL */
+#include "../sdl/sdl.h"
+
+
+// Global preview box - add to layer struct ? 
 GtkWidget *layer_preview_boxes[MAX_LAYERS] = { NULL };
 
 GtkWidget* create_layer_component(guint8 layer_index) {
@@ -181,6 +186,7 @@ void set_preview_thumbnail(guint8 layer_index)
     add_main_log(g_strdup_printf("[INFO] set_preview_thumbnail: layer %u preview set successfully", layer_index));
 }
 
+// TO IMPLEMENT
 gboolean on_layer_menu_label_click(GtkWidget *widget, GdkEventButton *event, gpointer user_data) {
     return TRUE;  // stop further propagation
 }

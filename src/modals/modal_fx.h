@@ -2,10 +2,9 @@
 #define MODAL_FX_H
 
 #include <gtk/gtk.h>
-#include "utils.h"
-#include "layer.h"
-#include "sdl.h"    
-#include "sdl_utilities.h"  
+#include "../utils/utils.h"
+#include "../components/component_layer.h"
+#include "../sdl/sdl.h"
 
 typedef struct {
     guint8 layer_index;  	

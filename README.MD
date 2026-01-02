@@ -1,167 +1,309 @@
-Quick overview:
+# Pulsrr — Video Sequencer & Mixer (VJ Tool)
 
-its a video mixer. it takes between 1 and 4 videos and mix it, allow user to apply some filter on each layer (like speed, grayscale yes/no, alpha transparency (0-255).
+Pulsrr is a **Linux-based video mixer and sequencer** designed for **VJ and live visual performance**.  
+It allows users to mix **1 to 4 video layers**, apply real-time effects, create sequences, and export the final render as an **MP4 (H.264)** video.
 
-How it works ?
+---
 
-I use GTK with SDL, i mean Gtk embed an SDL window on x11 envirnoment (not working on wayland). SDL has 2 mode: Live mode and playback mode, live mode allow user to create each sequence and see the render on screen. Lets start by the Live mode workflow :  User Start the software. he cans load between 1-4 videos by click on Load button of each layer. it open a load layer modal, on this modal user can set the quality (scale) and FPS of each layer independantly. then click on export. on export clicked those videos are converted to frames by ffmpeg in respected folder Frames_1 Frames_2 Frames_3 Frames_4 (folder can be empty if nothing loaded by user). once frames well loaded user can click on FX button of each layer to set some FX. then user click on Update button. this trigger and SDL function who preload all the frames for efficient rendering and display the render loop when loading finish.
+## Overview
 
-if user is happy with the sequence he created he can click on Add sequence button. this will open a modal asking user for sequence duration and quality (scale) then click on add sequence. it will create and store the sequence 
+The core workflow is simple:
 
-to see all sequence added he can click on playback button, this put SDL on playback mode and display the final render (all sequence in a row with effect applied) user can download the finale render. or switch to live mode again and create more sequences 
+1. Load **1–4 videos**, each with independent FPS and scale (quality)
+2. Videos are parsed into frames using **FFmpeg**
+3. Apply live effects per layer (grayscale, speed, alpha)
+4. Click **Update** to render and preview the mixed result
+5. Save the result as a **sequence** (duration + scale)
+6. Chain multiple sequences together
+7. Switch to **Playback mode** to preview the final result
+8. Export the full render as an **MP4 video**
 
-Modal_fx;
-- Add grab_add & grab_remove to focus on modal, set the button sensitive FALSE while FX processing
+---
 
-layer loading:
-- Error handling with the loading form (file format incorect etc...)
-- How should the export thread control FFmpeg and cancellation?
+## Project structure
 
-Layer component:
+```
+├── .gitignore
+├── Makefile
+├── media/
+│ ├── aphorisms.txt
+│ ├── DS-TERM.TTF
+│ ├── icon.png
+│ └── logo.png
+├── src/
+│ ├── main.c
+│ ├── modals/
+│ │ ├── modal_add_sequence.c
+│ │ ├── modal_add_sequence.h
+│ │ ├── modal_download.c
+│ │ ├── modal_download.h
+│ │ ├── modal_fx.c
+│ │ ├── modal_fx.h
+│ │ ├── modal_load_video.c
+│ │ └── modal_load_video.h
+│ ├── components/
+│ │ ├── component_aphorism.c
+│ │ ├── component_aphorism.h
+│ │ ├── component_layer.c
+│ │ ├── component_layer.h
+│ │ ├── component_screen.c
+│ │ ├── component_screen.h
+│ │ ├── component_sequencer.c
+│ │ └── component_sequencer.h
+│ ├── sdl/
+│ │ ├── sdl.c
+│ │ └── sdl.h
+│ ├── utils/
+│ │ ├── utils.c
+│ │ └── utils.h
+│ └── styles/
+│ └── style.css
+├── build/
+└── README.MD
+```
 
-- the width of the preview is a bit too big, reduce it. (see bg duplication)
+## Technology Stack
 
-Sequence component:
+- **GTK 3** — UI
+- **SDL2** — Rendering engine
+- **FFmpeg** — Video decoding & encoding
+- **X11 only**  
+  > SDL cannot be embedded in GTK under Wayland.  
+  > The application explicitly forces X11.
 
-- the height is too big (bg duplication) need to decrease it a bit.
+**Target platform:** Linux
 
-Modal Add_Sequence: 
-- Add grab_add & grab_remove to focus on modal, set the button sensitive FALSE while FX processing
+---
 
+## Architecture Overview
 
-# Add Sequence – Test Plan & User Cases
+### Rendering Modes
 
-This part defines all manual test cases required to validate the **Add Sequence** feature, including UI safety, frame generation, FX consistency, and failure handling.
+SDL operates in two distinct modes:
+
+- **Live Mode**
+  - Interactive editing
+  - Effects are adjustable in real time
+  - Used to build sequences
+
+- **Playback Mode**
+  - Plays stored sequences sequentially
+  - Effects are frozen
+  - Used for final preview and export
+
+---
+
+## Layer System
+
+The application supports **up to 4 layers**, displayed as blocks on the left panel.
+
+### Layer Structure
+
+```c
+typedef struct Layer {
+    char *frame_folder;
+
+    SDL_Surface **frames;
+    SDL_Surface **frames_gray;
+
+    SDL_Texture **textures;
+    SDL_Texture **textures_gray;
+
+    int     current_frame;
+    int     frame_count;
+    Uint32  last_tick;
+
+    double  speed;
+    int     fps;
+    Uint8   alpha;
+    int     grayscale;
+    int     blend_mode;
+
+    int     width;
+    int     height;
+
+    LayerState state;
+} Layer;
+```
+
+```
+typedef enum {
+    LAYER_EMPTY,
+    LAYER_UP_TO_DATE,
+    LAYER_MODIFIED
+} LayerState;
+```
+
+## Layer Capabilities
+
+Each layer supports independent control of:
+
+- **FPS**
+- **Scale (quality)**
+- **Speed**
+- **Alpha transparency** (0–255)
+- **Grayscale** (on / off)
+
+---
+
+## Modals
+
+### Load Layer Modal
+- Select video file
+- Set FPS
+- Set scale (quality)
+
+### Add Sequence Modal
+- Set duration
+- Set scale (quality)
+
+### FX Modal
+- Real-time effect control
+- UI locked during FX processing
+
+---
+
+## Update & Rendering Pipeline
+
+When **Update** is clicked:
+
+1. Layer states are checked
+2. Only layers marked as `LAYER_MODIFIED` are processed
+3. A background thread preloads textures
+4. The UI displays:
+   - Loading screen
+   - Progress bar
+   - Log output
+5. The final mixed render appears when processing completes
+
+---
+
+## Sequences
+
+- A sequence is a snapshot of the live mix
+- Stored entirely in memory
+- Multiple sequences can be chained
+
+### Playback Mode
+- Sequences are rendered sequentially
+- Effects are locked
+- Used for validation before export
+
+---
+
+## Export
+
+- Output format: **MP4 (H.264)**
+- Multithreaded encoding
+- SDL rendering is paused for performance
+- Final video concatenates all sequences
+
+---
+
+## Sequence Folder Structure
+
+```text
+sequences/
+└── sequence_X/
+    ├── Frames_1/
+    ├── Frames_2/
+    ├── Frames_3/
+    ├── Frames_4/
+    ├── fx.txt
+    ├── mixed_frames/
+```
+
+# Add Sequence — Test Plan & User Cases
+
+This section defines all manual test cases required to validate the **Add Sequence** feature.
 
 ---
 
 ## 1. Modal & UI Safety
 
-- Modal blocks **all interactions** with the rest of the application while processing
-- Back button is disabled during processing
-- Export button is disabled during processing
-- User cannot interact with any widget during generation
-- No crash if user clicks rapidly before processing starts
-- UI is fully re-enabled after completion or abort
-- Progress bar updates correctly and never freezes
-- Modal log auto-scrolls to latest entry
-- No GTK warnings or critical errors during modal lifetime
+- Modal blocks all interaction during processing
+- Buttons disabled during processing
+- No crashes on rapid input
+- Progress bar updates correctly
+- Log auto-scrolls
+- UI restored after completion or abort
+- No GTK warnings
 
 ---
 
 ## 2. Sequence Folder Creation
 
-- `sequences/` directory is created if missing
-- `sequence_X/` index increments correctly
-- Existing sequences are never overwritten
-- Folder structure is exactly:
-
-sequences/
-sequence_X/
-Frames_1/
-Frames_2/
-Frames_3/
-Frames_4/
-fx.txt
-mixed_frames/ (only if generation succeeds)
-sequence_X.mp4 (only if encoding succeeds)
-
+- `sequences/` auto-created if missing
+- `sequence_X` index increments correctly
+- No overwrite of existing sequences
+- Folder structure strictly respected
 
 ---
 
 ## 3. Layer Presence & Validation
 
-- Layer with **no frames**:
-  - Skipped entirely during mixing
-  - Warning logged in modal log
-  - Still written to `fx.txt` with default values
-- Layer with frames but **alpha = 0**:
-  - Loaded normally
-  - Blended correctly (invisible but valid)
-- Layer with grayscale enabled:
-  - Uses grayscale frames only
-- Layer speed < 1.0:
-  - Frame repetition logic is correct
-- Layer speed ≥ 1.0:
-  - Frame skipping logic is correct
-- Missing `Frames_X` directory:
-  - Logged
-  - Layer skipped safely
+- Empty layer skipped safely
+- Alpha = 0 blends correctly
+- Grayscale uses grayscale frames
+- Speed < 1.0 repeats frames correctly
+- Speed ≥ 1.0 skips frames correctly
+- Missing frames logged and skipped safely
 
 ---
 
 ## 4. Abort Conditions
 
-- **All layers empty or invalid**:
-  - Warning shown in modal log
-  - Process aborts immediately
-  - No `mixed_frames/` directory created
-  - No mp4 generated
-  - `fx.txt` still created
-- Frame loading failure (`IMG_Load` fails):
-  - Frame skipped
-  - No crash
-- ffmpeg missing or encoding failure:
-  - Logged
-  - No crash
+- All layers empty → abort safely
+- No mixed frames created
+- No MP4 generated
+- `fx.txt` still written
+- FFmpeg failure logged, no crash
 
 ---
 
 ## 5. FX Consistency
 
-- `fx.txt` always contains **all 4 layers**
-- FX values match live state at export time:
-  - speed
-  - gray (0 or 1)
-  - alpha
-- Empty layers still appear with default FX values
-- No runtime/live memory is used during rendering (FX read only from `fx.txt`)
+- `fx.txt` always contains all 4 layers
+- FX values match live state
+- Empty layers use default values
+- Rendering uses only `fx.txt`
 
 ---
 
 ## 6. Frame Generation
 
-- Mixed frame resolution matches selected scale
-- Background is solid black
-- Layers are blended in correct order (layer 0 → layer 3)
-- Frame naming is continuous:
-  - `frame_00001.png` → `frame_XXXXX.png`
+- Resolution matches selected scale
+- Background is black
+- Correct layer order (0 → 3)
+- Continuous frame naming
 - Frame count = `duration × 25 FPS`
-- All SDL surfaces are freed (no memory leaks)
+- No memory leaks
 
 ---
 
 ## 7. Video Encoding
 
-- ffmpeg is executed only if `mixed_frames/` exists
-- mp4 resolution matches mixed frames
-- mp4 duration matches expected length
-- Encoding success is logged
-- Encoding failure is logged and does not crash
+- Encoding only occurs if frames exist
+- Correct resolution and duration
+- Encoding success and failure logged
+- No crash on failure
 
 ---
 
 ## 8. Stress & Edge Cases
 
-- Minimum duration
-- Maximum duration
-- Very high number of frames per layer
-- Mixed speeds (0.25, 0.5, 1, 2, 4)
-- Grayscale + alpha combined
-- One valid layer, three empty layers
-- All layers valid but extremely short sequences
+- Minimum and maximum duration
+- Large frame counts
+- Mixed speeds
+- Combined FX
+- Single-layer sequences
 
 ---
 
 ## 9. Behavioral Consistency
 
-- Output behavior matches live mix logic
-- Speed math is identical to SDL live render
-- No dependency on global live render state
-- Deterministic output:
-  - Same inputs always produce the same results
-
----
-
+- Playback matches live render
+- Deterministic output
+- No dependency on live runtime state
 
 
