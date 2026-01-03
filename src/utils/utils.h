@@ -23,6 +23,7 @@
 #define LOOP_BAR_WIDTH             6
 #define SPACING_DEFAULT 16
 #define BUTTON_SPACING 10
+#define MASTER_FPS 30
 
 typedef struct {
     char *base_dir;

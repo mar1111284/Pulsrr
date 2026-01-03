@@ -1,5 +1,6 @@
 #include "utils.h"              
 #include "../sdl/sdl.h"       
+#include "accessor.h"
 
 #include <gtk/gtk.h>
 #include <glib.h>

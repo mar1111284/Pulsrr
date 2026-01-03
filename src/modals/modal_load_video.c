@@ -1,4 +1,5 @@
 #include "modal_load_video.h"
+#include "../utils/accessor.h"
 
 guint estimation_timeout_id = 0;
 

@@ -57,6 +57,7 @@ typedef struct Layer {
     int     width;
     int     height;
     LayerState state;
+    double accumulated_delta;
 } Layer;
 
 // Sequence specifications
@@ -68,7 +69,11 @@ typedef struct Sequence {
     int     current_frame;
     Uint32  last_tick;
     int     fps;
+    double speed;
+    double accumulated_delta;
 } Sequence;
+
+extern SDL g_sdl;
 
 // SDL Core
 int sdl_init(GtkWidget *widget);
@@ -89,22 +94,6 @@ void update_textures_async(void);
 // Init layers 
 void init_layers();
 
-// Setters
-void sdl_set_render_state(RenderState state);
-void sdl_set_layer_modified(int layer_index);
-void sdl_set_layer_alpha(int layer_index, Uint8 alpha);
-void sdl_set_layer_grayscale(int layer_index, int grayscale);
-void sdl_set_layer_speed(int layer_index, double speed);
-
-// Getters general 
-RenderState sdl_get_render_state(void);
-LayerState sdl_get_layer_state(guint8 layer_index);
-
-// Getters FX
-double sdl_get_layer_speed(guint8 layer_index);
-int sdl_get_alpha(guint8 layer_index);
-gboolean sdl_is_layer_gray(guint8 layer_index);
-
 // Render Live
 void sdl_render_live_mode(int advance_frames);
 
@@ -113,7 +102,7 @@ void free_sequence(Sequence *seq);
 Sequence* update_sequence_texture();
 void sdl_render_playback_mode(int advance_frames);
 
-// Utils 
+// Utils
 bool sdl_has_live_texture(void);
 bool sdl_has_sequence_texture(void);
 

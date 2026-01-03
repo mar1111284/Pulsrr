@@ -1,4 +1,5 @@
 #include "modal_download.h"
+#include "../utils/accessor.h"
 #define SEQUENCES_DIR "./sequences"
 
 typedef struct {

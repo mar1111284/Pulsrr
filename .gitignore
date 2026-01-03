@@ -19,7 +19,8 @@ Frames_*/
 # Logs & runtime junk
 # =========================
 *.log
-
+TODO.md
+SDD.MD
 # =========================
 # Editor / IDE backups
 # =========================

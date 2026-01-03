@@ -1,6 +1,7 @@
 #include "../utils/utils.h"
 #include "component_sequencer.h"
 #include "../modals/modal_download.h"
+#include "../utils/accessor.h"
 
 // Globals - TO REFACT
 int left_bar_x  = -1;

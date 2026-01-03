@@ -8,6 +8,7 @@
 
 /* SDL engine */
 #include "sdl/sdl.h"
+#include "utils/accessor.h"
 
 /* Components */
 #include "components/component_sequencer.h"

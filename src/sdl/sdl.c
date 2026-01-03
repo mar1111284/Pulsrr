@@ -1,5 +1,6 @@
 /* SDL engine */
 #include "sdl.h"
+#include "../utils/accessor.h"
 
 /* System & libraries */
 #include <SDL2/SDL.h>
@@ -38,19 +39,21 @@ void free_sequence(Sequence *seq) {
             if (seq->frames[i]) SDL_FreeSurface(seq->frames[i]);
         g_free(seq->frames);
     }
-
+	seq->accumulated_delta = 0.0;
     g_free(seq->root_folder);
     g_free(seq);
 }
 
 Sequence* update_sequence_texture() {
     Sequence *seq = g_malloc0(sizeof(Sequence));
-    seq->fps = 25;
     seq->current_frame = 0;
     seq->last_tick = SDL_GetTicks();
     seq->frame_count = 0;
     seq->frames = NULL;
     seq->textures = NULL;
+    seq->speed = 1.0;              
+    seq->accumulated_delta = 0.0;
+    seq->last_tick = SDL_GetTicks();
 
     gchar *sequences_dir = "sequences";
     seq->root_folder = g_strdup(sequences_dir);
@@ -120,15 +123,19 @@ Sequence* update_sequence_texture() {
 }
 
 void sdl_render_playback_mode(int advance_frames) {
-    if (!g_sdl.sequence || g_sdl.sequence->frame_count == 0)
+    if (!g_sdl.sequence || g_sdl.sequence->frame_count == 0) {
         return;
+    }
 
     Sequence *seq = g_sdl.sequence;
     Uint32 now = SDL_GetTicks();
-    Uint32 base_delay = 1000 / seq->fps;
+    double frame_duration = 1000.0 / MASTER_FPS;
+
+    if (seq->current_frame >= seq->frame_count || seq->current_frame < 0) {
+        seq->current_frame = 0;
+    }
 
     SDL_Texture *tex = seq->textures[seq->current_frame];
-
     if (!tex) {
         g_printerr("[PLAYBACK] Texture %d is NULL\n", seq->current_frame);
         return;
@@ -138,88 +145,25 @@ void sdl_render_playback_mode(int advance_frames) {
     SDL_RenderCopy(g_sdl.renderer, tex, NULL, NULL);
 
     if (advance_frames) {
-        if (now - seq->last_tick >= base_delay) {
-            seq->current_frame++;
-            if (seq->current_frame >= seq->frame_count)
-                seq->current_frame = 0; // looping
-            seq->last_tick = now;
+        Uint32 elapsed = now - seq->last_tick;
+        double delta = (double)elapsed / frame_duration * seq->speed;
+
+        seq->accumulated_delta += delta;
+
+        while (seq->accumulated_delta >= 1.0) {
+            seq->current_frame = (seq->current_frame + 1) % seq->frame_count;
+            seq->accumulated_delta -= 1.0;
         }
+
+        seq->last_tick = now;
     }
-}
-
-RenderState sdl_get_render_state(void)
-{
-    return g_sdl.render_state;
-}
-
-int sdl_get_alpha(guint8 layer_index) {
-    if (layer_index >= MAX_LAYERS) return 255;
-    Layer *ly = g_sdl.layers[layer_index];
-    if (!ly) return 255;
-    return ly->alpha;
-}
-
-gboolean sdl_is_layer_gray(guint8 layer_index) {
-    if (layer_index >= MAX_LAYERS) return FALSE;
-    Layer *ly = g_sdl.layers[layer_index];
-    if (!ly) return FALSE;
-    return ly->grayscale ? TRUE : FALSE;
-}
-
-void sdl_set_layer_grayscale(int layer_index, int grayscale)
-{
-    if (layer_index < 0 || layer_index >= 4 || !g_sdl.layers[layer_index])
-        return;
-
-    g_sdl.layers[layer_index]->grayscale = grayscale ? 1 : 0;
-}
-
-
-void sdl_set_layer_speed(int layer_index, double speed)
-{
-    if (layer_index < 0 || layer_index >= 4 || !g_sdl.layers[layer_index])
-        return;
-
-    if (speed <= 0.0) speed = 1.0; // prevent zero or negative speed
-    g_sdl.layers[layer_index]->speed = speed;
-    g_print("[SDL] Layer %d speed set to %.2f\n", layer_index, speed);
-}
-
-double sdl_get_layer_speed(guint8 layer_index) {
-    if (layer_index >= MAX_LAYERS) return 1.0;
-    Layer *ly = g_sdl.layers[layer_index];
-    if (!ly) return 1.0;
-    return ly->speed;
-}
-
-
-void sdl_set_layer_alpha(int layer_index, Uint8 alpha)
-{
-    if (layer_index < 0 || layer_index >= 4)
-        return;
-
-    Layer *ly = g_sdl.layers[layer_index];
-    if (!ly) return;
-
-    ly->alpha = alpha;
-    g_print("[SDL] Layer %d alpha set to %d\n", layer_index, alpha);
-}
-LayerState sdl_get_layer_state(guint8 layer_index) {
-    if (layer_index >= MAX_LAYERS)
-        return LAYER_EMPTY;
-
-    Layer *ly = g_sdl.layers[layer_index];
-    if (!ly)
-        return LAYER_EMPTY;
-
-    return ly->state;
+	
+    //g_print("[PLAYBACK] frame=%d/%d speed=%.2f accum=%.2f\n",seq->current_frame, seq->frame_count, seq->speed, seq->accumulated_delta);
 }
 
 gboolean sdl_finalize_texture_update(gpointer data)
 {
     (void)data;
-
-    g_print("[FINALIZE] Creating textures on main thread\n");
 
     for (int i = 0; i < 4; i++) {
         Layer *ly = g_sdl.layers[i];
@@ -274,12 +218,9 @@ gboolean sdl_finalize_texture_update(gpointer data)
         ly->last_tick = SDL_GetTicks();
         ly->state = LAYER_UP_TO_DATE;
 
-        g_print("[FINALIZE] Layer %d UP_TO_DATE (%d frames)\n", i, ly->frame_count);
     }
 
     sdl_set_render_state(RENDER_STATE_PLAY);
-
-    g_print("[FINALIZE] Render state updated\n");
 
     return G_SOURCE_REMOVE;
 }
@@ -289,24 +230,11 @@ void* texture_update_thread(void *arg)
     (void)arg;
 	sdl_set_render_state(RENDER_STATE_LOADING);
 
-    g_print("[THREAD] Texture update thread started\n");
-
     for (int i = 0; i < 4; i++) {
         Layer *ly = g_sdl.layers[i];
         if (!ly) continue;
-
-        if (ly->state != LAYER_MODIFIED) {
-            g_print("[THREAD] Layer %d skipped (state=%d)\n", i, ly->state);
-            continue;
-        }
-
-        if (!ly->frame_folder) {
-            g_print("[THREAD] Layer %d has no folder\n", i);
-            ly->state = LAYER_EMPTY;
-            continue;
-        }
-
-        /* --- clear old surfaces if any --- */
+		
+		// CLear surface
         if (ly->frames) {
             for (int f = 0; f < ly->frame_count; f++) {
                 if (ly->frames[f]) SDL_FreeSurface(ly->frames[f]);
@@ -321,21 +249,24 @@ void* texture_update_thread(void *arg)
         ly->frames_gray = NULL;
         ly->frame_count = 0;
 
-        /* --- count frames --- */
-        int count = count_frames(ly->frame_folder);
-        if (count <= 0) {
-            g_print("[THREAD] Layer %d empty\n", i);
-            ly->state = LAYER_EMPTY;
-            continue;
-        }
+		// count frames
+		if (!ly->frame_folder) {
+			ly->state = LAYER_EMPTY;
+			continue;
+		}
 
-        g_print("[THREAD] Layer %d: %d frames found\n", i, count);
+		int count = count_frames(ly->frame_folder);
+		if (count <= 0) {
+			ly->state = LAYER_EMPTY;
+			continue;
+		}
+
 
         ly->frames = g_malloc0(sizeof(SDL_Surface*) * count);
         ly->frames_gray = g_malloc0(sizeof(SDL_Surface*) * count);
         ly->frame_count = count;
 
-        /* --- load surfaces --- */
+        // Load surfaces
         for (int f = 0; f < count; f++) {
             char path[512];
             snprintf(path, sizeof(path), "%s/frame_%05d.png", ly->frame_folder, f + 1);
@@ -348,18 +279,15 @@ void* texture_update_thread(void *arg)
 
             ly->frames[f] = src;
             ly->frames_gray[f] = create_grayscale_surface(src);
-
-            g_print("[THREAD] Layer %d Frame %d loaded\n", i, f + 1);
         }
     }
 
-    /* Tell main thread to build textures */
     g_idle_add(sdl_finalize_texture_update, NULL);
 
-    g_print("[THREAD] Texture update thread finished\n");
     return NULL;
 }
 
+// Update text async
 void update_textures_async(void)
 {
     pthread_t tid;
@@ -367,7 +295,7 @@ void update_textures_async(void)
     pthread_detach(tid);
 }
 
-
+// Init layer
 void init_layers() {
     for (int i = 0; i < 4; i++) {
         if (!g_sdl.layers[i]) {
@@ -389,42 +317,10 @@ void init_layers() {
         ly->last_tick = SDL_GetTicks();
         ly->fps = 30;
     }
-
-    g_print("[SDL] Layers initialized with default alpha (0=255, 1-3=128)\n");
 }
 
 
-
-
-void sdl_set_layer_modified(int layer_index) {
-    if (layer_index < 0 || layer_index >= 4)
-        return;
-
-    // Allocate layer if NULL
-    if (!g_sdl.layers[layer_index]) {
-        g_sdl.layers[layer_index] = calloc(1, sizeof(Layer));
-    }
-
-    Layer *layer = g_sdl.layers[layer_index];
-    layer->state = LAYER_MODIFIED;
-
-    // Set the folder where frames are exported
-    char folder[64];
-    snprintf(folder, sizeof(folder), "Frames_%d", layer_index + 1);
-    free(layer->frame_folder);
-    layer->frame_folder = strdup(folder);
-
-    g_print("[SDL] Layer %d marked as MODIFIED, folder: %s\n", layer_index, folder);
-}
-
-
-void sdl_set_render_state(RenderState state) {
-    g_sdl.render_state = state;
-}
-
-/* -------------------------------------------------- */
-/* Text rendering (renderer-based)                    */
-/* -------------------------------------------------- */
+// Text rendering                   
 void draw_centered_text(const char *text)
 {
     static TTF_Font *font = NULL;
@@ -466,9 +362,7 @@ void draw_centered_text(const char *text)
     SDL_DestroyTexture(tex);
 }
 
-/* -------------------------------------------------- */
-/* SDL init (renderer-only)                           */
-/* -------------------------------------------------- */
+// SDL init
 int sdl_init(GtkWidget *widget)
 {
     if (g_sdl.initialized)
@@ -512,11 +406,12 @@ int sdl_init(GtkWidget *widget)
     SDL_SetRenderDrawBlendMode(g_sdl.renderer, SDL_BLENDMODE_BLEND);
 
     g_sdl.initialized = TRUE;
-    g_print("[SDL] Initialized (renderer mode)\n");
+    //g_print("[SDL] Initialized (renderer mode)\n");
 
     return 1;
 }
 
+// Apply grayscale
 SDL_Surface* create_grayscale_surface(SDL_Surface *src) {
     if (!src) return NULL;
 
@@ -542,46 +437,19 @@ SDL_Surface* create_grayscale_surface(SDL_Surface *src) {
     return gray;
 }
 
-void sdl_render_live_mode(int advance_frames)
-{
+// Render draw live
+void sdl_render_live_mode(int advance_frames) {
     static int error_logged[4] = {0, 0, 0, 0};
     Uint32 now = SDL_GetTicks();
-    Uint32 base_delay = 1000 / 30; // base FPS = 30
-
-    // Clear screen (background)
-    SDL_SetRenderDrawColor(g_sdl.renderer, 18, 18, 18, 255);
+    double frame_duration = 1000.0 / MASTER_FPS;  // Time per frame in ms
 
     for (int i = 0; i < 4; i++) {
         Layer *ly = g_sdl.layers[i];
-        if (!ly) {
-            g_print("[LIVE] Layer %d is NULL, skipping\n", i);
-            continue;
-        }
+        if (!ly || ly->state != LAYER_UP_TO_DATE || ly->frame_count <= 0 || !ly->textures) continue;
 
-        // Skip if not ready
-        if (ly->state != LAYER_UP_TO_DATE) {
-            g_print("[LIVE] Layer %d not UP_TO_DATE (state=%d), skipping\n", i, ly->state);
-            continue;
-        }
+        if (ly->current_frame >= ly->frame_count || ly->current_frame < 0) ly->current_frame = 0;
 
-        // Skip if no frames/textures
-        if (ly->frame_count <= 0 || !ly->textures) {
-            g_print("[LIVE] Layer %d has no textures, skipping\n", i);
-            continue;
-        }
-
-        // Clamp current_frame
-        if (ly->current_frame < 0 || ly->current_frame >= ly->frame_count) {
-            g_printerr("[LIVE] Layer %d frame index out of range (%d/%d), resetting\n",
-                        i, ly->current_frame, ly->frame_count);
-            ly->current_frame = 0;
-        }
-
-        // Pick texture based on grayscale
-        SDL_Texture *tex = (ly->grayscale && ly->textures_gray)
-                           ? ly->textures_gray[ly->current_frame]
-                           : ly->textures[ly->current_frame];
-
+        SDL_Texture *tex = ly->grayscale ? ly->textures_gray[ly->current_frame] : ly->textures[ly->current_frame];
         if (!tex) {
             if (!error_logged[i]) {
                 g_printerr("[LIVE] Layer %d texture[%d] is NULL\n", i, ly->current_frame);
@@ -591,39 +459,28 @@ void sdl_render_live_mode(int advance_frames)
         }
         error_logged[i] = 0;
 
-        // Ensure blend mode
         SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
-
-        // Debug info
-        g_print("[LIVE] Layer %d: frame=%d/%d alpha=%d grayscale=%d speed=%.2f\n",
-                i, ly->current_frame, ly->frame_count, ly->alpha, ly->grayscale, ly->speed);
-
-        // Render
         SDL_SetTextureAlphaMod(tex, ly->alpha);
         SDL_RenderCopy(g_sdl.renderer, tex, NULL, NULL);
 
-        // Frame advance only if requested
         if (advance_frames) {
-            if (ly->speed >= 1.0) {
-                // Fast layer: advance integer frames every tick
-                ly->current_frame += (int)ly->speed;
-                if (ly->current_frame >= ly->frame_count)
-                    ly->current_frame = 0;
-                ly->last_tick = now;
-            } else {
-                // Slow layer: advance 1 frame after enough delay
-                if (now - ly->last_tick >= (Uint32)(base_delay / ly->speed)) {
-                    ly->current_frame++;
-                    if (ly->current_frame >= ly->frame_count)
-                        ly->current_frame = 0;
-                    ly->last_tick = now;
-                }
+            Uint32 elapsed = now - ly->last_tick;
+            double delta = (double)elapsed / frame_duration * ly->speed;
+            ly->accumulated_delta += delta;
+
+            while (ly->accumulated_delta >= 1.0) {
+                ly->current_frame = (ly->current_frame + 1) % ly->frame_count;
+                ly->accumulated_delta -= 1.0;
             }
+
+            ly->last_tick = now;
         }
+
+        //g_print("[LIVE] Layer %d: frame=%d/%d alpha=%d grayscale=%d speed=%.2f accum=%.2f\n",i, ly->current_frame, ly->frame_count, ly->alpha, ly->grayscale, ly->speed, ly->accumulated_delta);
     }
 }
 
-// Returns true if at least one live layer has frames loaded
+// Returns true if at least one live layer has frames loaded TO BE REPLACED
 bool sdl_has_live_texture(void)
 {
     for (int i = 0; i < MAX_LAYERS; i++) {
@@ -638,7 +495,7 @@ bool sdl_has_live_texture(void)
     return false;
 }
 
-// Returns true if at least one sequence has been created
+// Returns true if at least one sequence has been created TO BE REPLACED
 bool sdl_has_sequence_texture(void)
 {
     Sequence *seq = g_sdl.sequence;
@@ -651,10 +508,7 @@ bool sdl_has_sequence_texture(void)
     return false;
 }
 
-
-/* -------------------------------------------------- */
-/* Draw loop                                          */
-/* -------------------------------------------------- */
+// Main draw loop
 gboolean sdl_draw_tick(gpointer data)
 {
     (void)data;
@@ -678,11 +532,11 @@ gboolean sdl_draw_tick(gpointer data)
 		        break;
 
 		    case RENDER_STATE_PLAY:
-		        sdl_render_live_mode(1); // advance frames
+		        sdl_render_live_mode(1);
 		        break;
 
 		    case RENDER_STATE_PAUSE:
-		        sdl_render_live_mode(0); // do not advance frames
+		        sdl_render_live_mode(0);
 		        break;
 		}
 		
@@ -702,11 +556,11 @@ gboolean sdl_draw_tick(gpointer data)
 		        break;
 
 		    case RENDER_STATE_PLAY:
-		        sdl_render_playback_mode(1); // advance frames
+		        sdl_render_playback_mode(1);
 		        break;
 
 		    case RENDER_STATE_PAUSE:
-		        sdl_render_playback_mode(0); // do not advance frames
+		        sdl_render_playback_mode(0);
 		        break;
 		}
 		
@@ -722,16 +576,10 @@ gboolean sdl_draw_tick(gpointer data)
     return TRUE;
 }
 
-
-
-
-
-/* -------------------------------------------------- */
-/* Embed SDL in GTK                                   */
-/* -------------------------------------------------- */
+// Embed SDL in GTK
 int sdl_embed_in_gtk(GtkWidget *widget)
 {
-    g_print("[SDL] embed called\n");
+    //g_print("[SDL] embed called\n");
 	sdl_set_render_state(RENDER_STATE_IDLE);
     if (!sdl_init(widget))
         return 0;

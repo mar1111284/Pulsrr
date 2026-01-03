@@ -16,6 +16,7 @@ UTILS_DIR = $(SRC_DIR)/utils
 SRCS = $(SRC_DIR)/main.c \
        $(SDL_DIR)/sdl.c \
        $(UTILS_DIR)/utils.c \
+       $(UTILS_DIR)/accessor.c \
        $(COMP_DIR)/component_layer.c \
        $(COMP_DIR)/component_sequencer.c \
        $(COMP_DIR)/component_screen.c \

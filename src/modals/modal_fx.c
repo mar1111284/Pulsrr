@@ -1,4 +1,5 @@
 #include "modal_fx.h"
+#include "../utils/accessor.h"
 
 void on_fx_apply_clicked(GtkButton *button, gpointer user_data) {
 

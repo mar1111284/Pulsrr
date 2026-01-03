@@ -2,6 +2,7 @@
 #include "../utils/utils.h"
 #include "../sdl/sdl.h"
 #include "../components/component_sequencer.h"
+#include "../utils/accessor.h"
 #include <SDL2/SDL_image.h>
 
 int encode_frames_folder_with_ffmpeg(const gchar *frames_folder, const gchar *output_mp4, int fps, int width, int height)
@@ -399,6 +400,7 @@ void on_add_sequence_clicked(GtkButton *button, gpointer user_data)
     
     set_progress_add_sequence(ui, 0.9, "Updating sequence textures.");
     update_sequence_texture();
+    update_sequencer();
     set_progress_add_sequence(ui, 1, "Completed.");
 
     g_free(seq_dir);
