@@ -8,6 +8,7 @@ It allows users to mix **1 to 4 video layers**, apply real-time effects, create 
 ## Screenshot
 
 ![Pulsrr screenshot](media/screenshot_1.png)
+![Pulsrr screenshot](media/screenshot_2.png)
 
 ---
 

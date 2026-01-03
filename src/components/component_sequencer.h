@@ -27,5 +27,7 @@ int get_sequence_widget_height(GtkWidget *sequences_box);
 // Utilities
 int get_number_of_sequences(void);
 
+static void on_clear_all_clicked(GtkButton *button, gpointer user_data);
+
 #endif // SEQUENCER_H
 

@@ -27,5 +27,7 @@ void sdl_set_layer_speed(int layer_index, double speed);
 LayerState sdl_get_layer_state(uint8_t layer_index);
 void sdl_set_layer_modified(int layer_index);
 
+void sdl_set_layer_state(guint8 layer_index, LayerState new_state);
+
 #endif // ACCESSOR_H
 

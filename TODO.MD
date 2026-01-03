@@ -40,6 +40,7 @@
 
 ## [PENDING FOR REVIEW]
 - [ ] Unify frame advance logic between Live and Playback (see refactoring section)
+- [x] Clear all sequences (disk + memory + UI)
 
 ## [DONE / READY TO COMMIT]
 - [x] Sequence preview thumbnail display issue (initial fix)

@@ -25,6 +25,89 @@ SDL g_sdl = {
     .screen_mode = LIVE_MODE
 };
 
+
+void sdl_clear_layer(guint8 layer_index)
+{
+    if (layer_index >= MAX_LAYERS) {
+        add_main_log("[WARN] sdl_clear_layer: invalid layer index");
+        return;
+    }
+
+    Layer *layer = g_sdl.layers[layer_index];
+    if (!layer) {
+        // Already empty — nothing to do
+        return;
+    }
+
+    add_main_log(g_strdup_printf("[SDL] Clearing layer %u...", layer_index + 1));
+
+    // 1. Destroy all textures
+    if (layer->textures) {
+        for (int i = 0; i < layer->frame_count; i++) {
+            if (layer->textures[i]) {
+                SDL_DestroyTexture(layer->textures[i]);
+                layer->textures[i] = NULL;
+            }
+        }
+        free(layer->textures);
+        layer->textures = NULL;
+    }
+
+    if (layer->textures_gray) {
+        for (int i = 0; i < layer->frame_count; i++) {
+            if (layer->textures_gray[i]) {
+                SDL_DestroyTexture(layer->textures_gray[i]);
+                layer->textures_gray[i] = NULL;
+            }
+        }
+        free(layer->textures_gray);
+        layer->textures_gray = NULL;
+    }
+
+    // 2. Free surfaces (if you store them)
+    if (layer->frames) {
+        for (int i = 0; i < layer->frame_count; i++) {
+            if (layer->frames[i]) {
+                SDL_FreeSurface(layer->frames[i]);
+                layer->frames[i] = NULL;
+            }
+        }
+        free(layer->frames);
+        layer->frames = NULL;
+    }
+
+    if (layer->frames_gray) {
+        for (int i = 0; i < layer->frame_count; i++) {
+            if (layer->frames_gray[i]) {
+                SDL_FreeSurface(layer->frames_gray[i]);
+                layer->frames_gray[i] = NULL;
+            }
+        }
+        free(layer->frames_gray);
+        layer->frames_gray = NULL;
+    }
+
+    // 3. Free folder path
+    free(layer->frame_folder);
+    layer->frame_folder = NULL;
+
+    // 4. Reset all fields
+    layer->frame_count = 0;
+    layer->current_frame = 0;
+    layer->last_tick = 0;
+    layer->speed = 1.0;
+    layer->fps = 25;  // or your default
+    layer->alpha = 255;
+    layer->grayscale = 0;
+    layer->blend_mode = SDL_BLENDMODE_BLEND;
+    layer->width = 0;
+    layer->height = 0;
+    layer->accumulated_delta = 0.0;
+    layer->state = LAYER_EMPTY;
+
+    add_main_log(g_strdup_printf("[SDL] Layer %u fully cleared from memory", layer_index + 1));
+}
+
 void free_sequence(Sequence *seq) {
     if (!seq) return;
 
@@ -122,7 +205,62 @@ Sequence* update_sequence_texture() {
     return seq;
 }
 
+// sdl.c — implementation
+void sdl_clear_all_sequences(void)
+{
+    Sequence *seq = g_sdl.sequence;
+    if (!seq) {
+        add_main_log("[SDL] No sequences to clear");
+        return;
+    }
+
+    add_main_log("[SDL] Clearing all sequences from memory...");
+
+    // 1. Free textures
+    if (seq->textures) {
+        for (int i = 0; i < seq->frame_count; i++) {
+            if (seq->textures[i]) {
+                SDL_DestroyTexture(seq->textures[i]);
+                seq->textures[i] = NULL;
+            }
+        }
+        free(seq->textures);
+        seq->textures = NULL;
+    }
+
+    // 2. Free surfaces
+    if (seq->frames) {
+        for (int i = 0; i < seq->frame_count; i++) {
+            if (seq->frames[i]) {
+                SDL_FreeSurface(seq->frames[i]);
+                seq->frames[i] = NULL;
+            }
+        }
+        free(seq->frames);
+        seq->frames = NULL;
+    }
+
+    // 3. Free folder path
+    free(seq->root_folder);
+    seq->root_folder = NULL;
+
+    // 4. Reset all fields
+    seq->frame_count = 0;
+    seq->current_frame = 0;
+    seq->last_tick = 0;
+    seq->fps = 25;
+    seq->speed = 1.0;
+    seq->accumulated_delta = 0.0;
+
+    add_main_log("[SDL] All sequences cleared from memory");
+}
+
 void sdl_render_playback_mode(int advance_frames) {
+
+	if (!sdl_has_sequence_texture()) {
+            draw_centered_text("PLAYBACK MODE (No sequence loaded)");
+        }
+        
     if (!g_sdl.sequence || g_sdl.sequence->frame_count == 0) {
         return;
     }
@@ -442,6 +580,10 @@ void sdl_render_live_mode(int advance_frames) {
     static int error_logged[4] = {0, 0, 0, 0};
     Uint32 now = SDL_GetTicks();
     double frame_duration = 1000.0 / MASTER_FPS;  // Time per frame in ms
+    
+    if (!sdl_has_live_texture()) {
+            draw_centered_text("LIVE MODE (No frames loaded)");
+        }
 
     for (int i = 0; i < 4; i++) {
         Layer *ly = g_sdl.layers[i];

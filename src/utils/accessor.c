@@ -2,6 +2,27 @@
 #include "../sdl/sdl.h"
 #include "utils.h"
 
+// Layer
+void sdl_set_layer_state(guint8 layer_index, LayerState new_state)
+{
+    if (layer_index >= MAX_LAYERS) {
+        add_main_log("[WARN] sdl_set_layer_state: invalid layer index");
+        return;
+    }
+
+    Layer **layer_ptr = &g_sdl.layers[layer_index];
+    if (!*layer_ptr) {
+        // Lazily allocate only if needed
+        *layer_ptr = calloc(1, sizeof(Layer));
+        if (!*layer_ptr) {
+            add_main_log("[ERROR] Failed to allocate Layer struct");
+            return;
+        }
+    }
+
+    (*layer_ptr)->state = new_state;
+}
+
 // Playback
 void sdl_set_playback_speed(double speed) {
     if (speed < 0.01) speed = 0.01;  // prevent total freeze

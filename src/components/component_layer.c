@@ -75,24 +75,24 @@ GtkWidget* create_layer_component(guint8 layer_index) {
 		gtk_container_add(GTK_CONTAINER(preview_box), preview_label);
 	}
 
-	// Small menu label in overlay (not implemented now)
-	GtkWidget *menu_label = gtk_label_new("⋮");
-	gtk_widget_set_name(menu_label, "layer-menu-btn");
-	gtk_label_set_xalign(GTK_LABEL(menu_label), 0.5);
-	gtk_label_set_yalign(GTK_LABEL(menu_label), 0.5);
+	// Delete layer button
+	GtkWidget *delete_layer_btn = gtk_label_new("x");
+	gtk_widget_set_name(delete_layer_btn, "layer-delete-btn");
+	gtk_label_set_xalign(GTK_LABEL(delete_layer_btn), 0.5);
+	gtk_label_set_yalign(GTK_LABEL(delete_layer_btn), 0.5);
 
-	GtkWidget *menu_box = gtk_event_box_new();
-	gtk_container_add(GTK_CONTAINER(menu_box), menu_label);
-	gtk_widget_set_size_request(menu_box, 16, 16);
-	gtk_widget_set_halign(menu_box, GTK_ALIGN_END);
-	gtk_widget_set_valign(menu_box, GTK_ALIGN_START);
+	GtkWidget *delete_btn_container = gtk_event_box_new();
+	gtk_container_add(GTK_CONTAINER(delete_btn_container), delete_layer_btn);
+	gtk_widget_set_size_request(delete_btn_container, 16, 16);
+	gtk_widget_set_halign(delete_btn_container, GTK_ALIGN_END);
+	gtk_widget_set_valign(delete_btn_container, GTK_ALIGN_START);
 
-	gtk_overlay_add_overlay(GTK_OVERLAY(overlay), menu_box);
+	gtk_overlay_add_overlay(GTK_OVERLAY(overlay), delete_btn_container);
 
 	// Connect signals
 	g_signal_connect(btn_load, "clicked", G_CALLBACK(on_load_button_clicked), GINT_TO_POINTER(layer_index));
 	g_signal_connect(btn_fx, "clicked", G_CALLBACK(on_fx_button_clicked), GINT_TO_POINTER(layer_index));
-	g_signal_connect(menu_box, "button-press-event", G_CALLBACK(on_layer_menu_label_click), NULL);
+	g_signal_connect(delete_btn_container,"button-press-event",G_CALLBACK(on_layer_delete_click),GINT_TO_POINTER(layer_index));
 
 	return overlay;
 }
@@ -110,84 +110,143 @@ void set_preview_thumbnail(guint8 layer_index)
         return;
     }
 
-    // Clear previous children
+    // 1. Clear all child widgets
     GList *children = gtk_container_get_children(GTK_CONTAINER(preview_box));
     for (GList *l = children; l; l = l->next) {
         gtk_widget_destroy(GTK_WIDGET(l->data));
     }
     g_list_free(children);
 
-    char folder[128];
-    snprintf(folder, sizeof(folder), "Frames_%u", layer_index+1);
+    // 2. RESET CSS: go back to default name → uses clean style from style.css
+    gtk_widget_set_name(preview_box, "preview-box");
 
-    // Check if folder has frames
+    char folder[128];
+    snprintf(folder, sizeof(folder), "Frames_%u", layer_index + 1);
+
     if (count_frames(folder) == 0) {
+        // EMPTY STATE
         GtkWidget *empty_label = gtk_label_new("(EMPTY)");
         gtk_widget_set_name(empty_label, "preview-label");
         gtk_widget_set_halign(empty_label, GTK_ALIGN_CENTER);
         gtk_widget_set_valign(empty_label, GTK_ALIGN_CENTER);
         gtk_container_add(GTK_CONTAINER(preview_box), empty_label);
-        gtk_widget_show_all(preview_box);
-        add_main_log(g_strdup_printf("[INFO] set_preview_thumbnail: layer %u is empty", layer_index));
-        return;
-    }
 
-    // First frame path
-    char frame_path[512];
-    snprintf(frame_path, sizeof(frame_path), "%s/frame_00001.png", folder);
+        add_main_log(g_strdup_printf("[INFO] Layer %u preview set to EMPTY", layer_index + 1));
+    } else {
+        // HAS FRAMES: apply unique CSS background
+        char frame_path[512];
+        snprintf(frame_path, sizeof(frame_path), "%s/frame_00001.png", folder);
 
-    gchar *abs_path = g_strdup(frame_path);
-    if (!g_path_is_absolute(frame_path)) {
-        gchar *cwd = g_get_current_dir();
-        gchar *tmp = g_build_filename(cwd, frame_path, NULL);
+        gchar *abs_path = g_path_is_absolute(frame_path)
+            ? g_strdup(frame_path)
+            : g_build_filename(g_get_current_dir(), frame_path, NULL);
+
+        gchar *uri = g_filename_to_uri(abs_path, NULL, NULL);
         g_free(abs_path);
-        abs_path = tmp;
-        g_free(cwd);
-    }
 
-    // Convert to URI
-    gchar *uri = g_filename_to_uri(abs_path, NULL, NULL);
-    g_free(abs_path);
-    if (!uri) {
-        add_main_log(g_strdup_printf("[WARN] set_preview_thumbnail: failed to convert path to URI for layer %u", layer_index));
+        if (!uri) {
+            add_main_log("[WARN] Failed to create URI for thumbnail");
+            goto show_empty_fallback;
+        }
+
+        // Use unique ID to avoid CSS conflicts
+        gchar *css_id = g_strdup_printf("preview-layer-%u", layer_index + 1);
+        gtk_widget_set_name(preview_box, css_id);
+
+        gchar *css = g_strdup_printf(
+            "#%s {"
+            "  background-image: url('%s');"
+            "  background-repeat: no-repeat;"
+            "  background-position: center;"
+            "  background-size: contain;"
+            "  background-color: black;"
+            "}",
+            css_id,
+            uri
+        );
+
+        GtkCssProvider *provider = gtk_css_provider_new();
+        GError *error = NULL;
+        gtk_css_provider_load_from_data(provider, css, -1, &error);
+        if (error) {
+            add_main_log(g_strdup_printf("[ERROR] CSS load failed: %s", error->message));
+            g_clear_error(&error);
+            goto cleanup_css;
+        }
+
+        GtkStyleContext *context = gtk_widget_get_style_context(preview_box);
+        gtk_style_context_add_provider(context,
+                                       GTK_STYLE_PROVIDER(provider),
+                                       GTK_STYLE_PROVIDER_PRIORITY_USER);
+
+    cleanup_css:
+        g_object_unref(provider);
+        g_free(css);
+        g_free(css_id);
+        g_free(uri);
+        add_main_log(g_strdup_printf("[INFO] Layer %u thumbnail updated", layer_index + 1));
         return;
+
+    show_empty_fallback:
+        // In case of error, fall back to empty
+        GtkWidget *empty_label = gtk_label_new("(EMPTY)");
+        gtk_container_add(GTK_CONTAINER(preview_box), empty_label);
     }
-
-    // Apply CSS
-    gtk_widget_set_name(preview_box, "sequence-preview-css");
-    gchar *css = g_strdup_printf(
-        "#sequence-preview-css {"
-        "  background-image: url('%s');"
-        "  background-repeat: repeat;"
-        "  background-position: center;"
-        "  background-size: contain;"
-        "}",
-        uri
-    );
-
-    GtkCssProvider *provider = gtk_css_provider_new();
-    gtk_css_provider_load_from_data(provider, css, -1, NULL);
-
-    GtkStyleContext *context = gtk_widget_get_style_context(preview_box);
-    gtk_style_context_add_provider(
-        context,
-        GTK_STYLE_PROVIDER(provider),
-        GTK_STYLE_PROVIDER_PRIORITY_USER
-    );
-
-    // Cleanup
-    g_free(uri);
-    g_free(css);
-    g_object_unref(provider);
 
     gtk_widget_show_all(preview_box);
-    
-    // Success
-    add_main_log(g_strdup_printf("[INFO] set_preview_thumbnail: layer %u preview set successfully", layer_index));
 }
 
-// TO IMPLEMENT
-gboolean on_layer_menu_label_click(GtkWidget *widget, GdkEventButton *event, gpointer user_data) {
-    return TRUE;  // stop further propagation
+gboolean on_layer_delete_click(GtkWidget *widget,
+                               GdkEventButton *event,
+                               gpointer user_data)
+{
+    (void)widget;
+    (void)event;
+
+    guint8 layer_index = GPOINTER_TO_UINT(user_data);
+
+    add_main_log(g_strdup_printf("[UI] User requested delete for layer %u", layer_index + 1));
+
+    // === Delete folder from disk ===
+    char folder_name[64];
+    snprintf(folder_name, sizeof(folder_name), "Frames_%u", layer_index + 1);
+
+    gchar *abs_folder = g_build_filename(g_get_current_dir(), folder_name, NULL);
+
+    if (g_file_test(abs_folder, G_FILE_TEST_IS_DIR)) {
+        GError *error = NULL;
+        GDir *dir = g_dir_open(abs_folder, 0, &error);
+
+        if (dir) {
+            const char *entry;
+            while ((entry = g_dir_read_name(dir))) {
+                gchar *file_path = g_build_filename(abs_folder, entry, NULL);
+                if (unlink(file_path) != 0) {
+                    add_main_log(g_strdup_printf("[WARN] Could not delete file: %s", file_path));
+                }
+                g_free(file_path);
+            }
+            g_dir_close(dir);
+
+            if (rmdir(abs_folder) == 0) {
+                add_main_log(g_strdup_printf("[INFO] Deleted folder: %s", abs_folder));
+            } else {
+                add_main_log(g_strdup_printf("[WARN] Could not remove empty folder: %s", abs_folder));
+            }
+        } else {
+            add_main_log(g_strdup_printf("[ERROR] Failed to open folder for deletion: %s", 
+                                         error ? error->message : "unknown"));
+            g_clear_error(&error);
+        }
+    } else {
+        add_main_log("[INFO] No folder to delete (already empty)");
+    }
+
+    g_free(abs_folder);
+    sdl_clear_layer(layer_index);
+    set_preview_thumbnail(layer_index);
+    add_main_log(g_strdup_printf("[UI] Layer %u deleted and cleared successfully", layer_index + 1));
+
+    return TRUE;  // Event consumed
 }
 

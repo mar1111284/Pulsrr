@@ -19,7 +19,7 @@ GtkWidget* create_layer_component(guint8 layer_index);
 void on_load_button_clicked(GtkButton *button, gpointer user_data);
 void on_fx_button_clicked(GtkButton *button, gpointer user_data);
 void on_fx_apply_clicked(GtkButton *button, gpointer user_data);
-gboolean on_layer_menu_label_click(GtkWidget *widget, GdkEventButton *event, gpointer user_data);
+gboolean on_layer_delete_click(GtkWidget *widget, GdkEventButton *event, gpointer user_data);
 
 // Modal / Export callbacks
 void on_modal_cancel_clicked(GtkButton *button, gpointer user_data);

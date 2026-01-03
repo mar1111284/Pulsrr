@@ -206,14 +206,14 @@ GtkWidget *create_sequencer_component(void) {
     gtk_widget_set_size_request(row_export, 150, 36);
 
     GtkWidget *btn_export = gtk_button_new_with_label("Dwld. MP4");
-    GtkWidget *btn_open_export = gtk_button_new_with_label("Opn. Folder");
+    GtkWidget *btn_clear = gtk_button_new_with_label("Clear all");
     gtk_widget_set_name(btn_export, "btn-export");
-    gtk_widget_set_name(btn_open_export, "btn-open-export");
+    gtk_widget_set_name(btn_clear, "btn-clear");
     gtk_widget_set_size_request(btn_export, 100, 36);
-    gtk_widget_set_size_request(btn_open_export, 100, 36);
+    gtk_widget_set_size_request(btn_clear, 100, 36);
 
     gtk_box_pack_start(GTK_BOX(row_export), btn_export, TRUE, TRUE, 2);
-    gtk_box_pack_start(GTK_BOX(row_export), btn_open_export, TRUE, TRUE, 2);
+    gtk_box_pack_start(GTK_BOX(row_export), btn_clear, TRUE, TRUE, 2);
 
     // Row: Sequence info
     GtkWidget *row_info = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
@@ -373,8 +373,64 @@ GtkWidget *create_sequencer_component(void) {
 	g_signal_connect(sequence_restart,"clicked",G_CALLBACK(on_sequence_restart_clicked), NULL);
 	g_signal_connect(sequence_loop,"clicked",G_CALLBACK(on_sequence_loop_clicked), NULL);
 	g_signal_connect(btn_export, "clicked", G_CALLBACK(on_download_button_clicked), sequencer_container);
+	g_signal_connect(btn_clear, "clicked", G_CALLBACK(on_clear_all_clicked), NULL);
 
 
     return sequencer_container;
 }
+
+static gboolean delete_dir_recursive(const char *path)
+{
+    GDir *dir = g_dir_open(path, 0, NULL);
+    if (!dir)
+        return FALSE;
+
+    const char *name;
+    while ((name = g_dir_read_name(dir))) {
+        gchar *full = g_build_filename(path, name, NULL);
+
+        if (g_file_test(full, G_FILE_TEST_IS_DIR)) {
+            delete_dir_recursive(full);
+            rmdir(full);
+        } else {
+            remove(full);
+        }
+
+        g_free(full);
+    }
+
+    g_dir_close(dir);
+    return TRUE;
+}
+
+// Clear button clicked
+static void on_clear_all_clicked(GtkButton *button, gpointer user_data)
+{
+    (void)button;
+    (void)user_data;
+
+    const AppPaths *paths = get_app_paths();
+    const char *seq_dir = paths->sequences_dir;
+
+    /* 1. Clear in-memory state first */
+    sdl_clear_all_sequences();
+    sdl_set_render_state(RENDER_STATE_PAUSE);
+    update_sequencer();
+
+    /* 2. Clear on-disk data */
+    if (g_file_test(seq_dir, G_FILE_TEST_IS_DIR)) {
+
+        if (delete_dir_recursive(seq_dir)) {
+            add_main_log("[INFO] All sequences deleted from disk");
+        } else {
+            add_main_log("[WARN] Failed to delete some sequence files");
+        }
+
+    } else {
+        add_main_log("[INFO] No sequences directory found");
+    }
+
+    add_main_log("[UI] All sequences cleared");
+}
+
 

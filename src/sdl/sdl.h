@@ -106,6 +106,10 @@ void sdl_render_playback_mode(int advance_frames);
 bool sdl_has_live_texture(void);
 bool sdl_has_sequence_texture(void);
 
+// Clean Layer & Sequence
+void sdl_clear_layer(guint8 layer_index);
+void sdl_clear_all_sequences(void);
+
 
 #endif // SDL_H
 
