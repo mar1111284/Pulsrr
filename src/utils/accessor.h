@@ -7,6 +7,10 @@
 #include <SDL2/SDL.h>
 
 
+// Get current screen mode
+ScreenMode sdl_get_screen_mode(void);
+void sdl_set_screen_mode(ScreenMode mode);
+
 // --- Playback ---
 void sdl_set_playback_speed(double speed);
 

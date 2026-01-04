@@ -73,8 +73,9 @@ $(TARGET): $(OBJS)
 # Compile with automatic dependency generation
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
-
+	@echo "  CC    " $<                     
+	@$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
+	
 # Include dependency files
 -include $(OBJS:.o=.d)
 

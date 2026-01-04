@@ -458,30 +458,43 @@ void init_layers() {
 }
 
 
-// Text rendering                   
 void draw_centered_text(const char *text)
 {
     static TTF_Font *font = NULL;
     const AppPaths *paths = get_app_paths();
-	char *font_path = g_build_filename(paths->media_dir,"DS-TERM.TTF",NULL);
+
     if (!font) {
+        char *font_path = g_build_filename(paths->media_dir, "DS-TERM.TTF", NULL);
+        if (!font_path) {
+            g_printerr("[SDL] Failed to build font path\n");
+            return;
+        }
+
         font = TTF_OpenFont(font_path, 24);
+        g_free(font_path);  // ← FREE IT HERE
+
         if (!font) {
-            g_printerr("[SDL] Failed to load font\n");
+            g_printerr("[SDL] Failed to load font: %s\n", TTF_GetError());
             return;
         }
     }
 
+    if (!text || !*text) return;  // Safety
+
     SDL_Color green = {0x33, 0xFF, 0x33, 255};
     SDL_Surface *surf = TTF_RenderUTF8_Blended(font, text, green);
-    if (!surf)
+    if (!surf) {
+        g_printerr("[SDL] TTF_RenderUTF8_Blended failed: %s\n", TTF_GetError());
         return;
+    }
 
     SDL_Texture *tex = SDL_CreateTextureFromSurface(g_sdl.renderer, surf);
     SDL_FreeSurface(surf);
 
-    if (!tex)
+    if (!tex) {
+        g_printerr("[SDL] SDL_CreateTextureFromSurface failed: %s\n", SDL_GetError());
         return;
+    }
 
     int tex_w, tex_h;
     SDL_QueryTexture(tex, NULL, NULL, &tex_w, &tex_h);
@@ -490,16 +503,15 @@ void draw_centered_text(const char *text)
     SDL_GetRendererOutputSize(g_sdl.renderer, &win_w, &win_h);
 
     SDL_Rect dst = {
-        (win_w - tex_w) / 2,
-        (win_h - tex_h) / 2,
-        tex_w,
-        tex_h
+        .x = (win_w - tex_w) / 2,
+        .y = (win_h - tex_h) / 2,
+        .w = tex_w,
+        .h = tex_h
     };
 
     SDL_RenderCopy(g_sdl.renderer, tex, NULL, &dst);
-    SDL_DestroyTexture(tex);
+    SDL_DestroyTexture(tex);  // Good — you already do this
 }
-
 // SDL init
 int sdl_init(GtkWidget *widget)
 {

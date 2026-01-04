@@ -17,7 +17,8 @@ static gboolean update_sequencer_ui(gpointer user_data);
 
 static void on_sequence_play_clicked(GtkButton *button, gpointer user_data)
 {
-    // Only play if frames exist or not loading
+	(void)button;
+    (void)user_data;
     if (sdl_get_render_state() != RENDER_STATE_IDLE &&
         sdl_get_render_state() != RENDER_STATE_LOADING) {
         sdl_set_render_state(RENDER_STATE_PLAY);
@@ -26,25 +27,32 @@ static void on_sequence_play_clicked(GtkButton *button, gpointer user_data)
 
 static void on_sequence_pause_clicked(GtkButton *button, gpointer user_data)
 {
-	// Only pause if frames exist or not loading
+	(void)button;
+    (void)user_data;
     if (sdl_get_render_state() != RENDER_STATE_IDLE &&
         sdl_get_render_state() != RENDER_STATE_LOADING) {
         sdl_set_render_state(RENDER_STATE_PAUSE);
     }
 }
 
-
+// NOT IMPLEMENTED YET 
 static void on_sequence_restart_clicked(GtkButton *button, gpointer user_data)
 {
+	(void)button;
+    (void)user_data;
     g_print("[UI] sequence-restart clicked\n");
 }
 
+// NOT IMPLEMENTED YET 
 static void on_sequence_loop_clicked(GtkButton *button, gpointer user_data)
 {
+	(void)button;
+    (void)user_data;
     g_print("[UI] sequence-loop clicked\n");
 }
 
 void update_sequencer(void) {
+	//sdl_set_render_state(RENDER_STATE_LOADING); MIND THIS 
     g_idle_add(update_sequencer_ui, NULL);
 }
 
@@ -61,9 +69,12 @@ static gboolean update_sequencer_ui(gpointer user_data) {
 
     clear_container(sequences_box);
 
-    int num_sequences = get_number_of_sequences();
+    const AppPaths *paths = get_app_paths();
+    const char *seq_dir = paths->sequences_dir;
 
-    if (num_sequences == 0) {
+    GDir *dir = g_dir_open(seq_dir, 0, NULL);
+    if (!dir) {
+        // No sequences directory or empty
         GtkWidget *empty_label = gtk_label_new("(No sequence added)");
         gtk_widget_set_name(empty_label, "no-sequence-label");
         gtk_widget_set_hexpand(empty_label, TRUE);
@@ -71,18 +82,42 @@ static gboolean update_sequencer_ui(gpointer user_data) {
         gtk_widget_set_halign(empty_label, GTK_ALIGN_CENTER);
         gtk_widget_set_valign(empty_label, GTK_ALIGN_CENTER);
         gtk_box_pack_start(GTK_BOX(sequences_box), empty_label, TRUE, TRUE, 0);
-    } else {
-        for (int i = 0; i < num_sequences; i++) {
-            gchar *sequence_path = g_strdup_printf("sequences/sequence_%d", i + 1);
-            GtkWidget *sequence_widget = create_sequence_widget_css(sequence_path);
-            gtk_box_pack_start(GTK_BOX(sequences_box), sequence_widget, TRUE, TRUE, 2);
-            g_free(sequence_path);
+        gtk_widget_show_all(sequences_box);
+        return G_SOURCE_REMOVE;
+    }
+
+    int count = 0;
+    const gchar *entry;
+    while ((entry = g_dir_read_name(dir))) {
+        if (!g_str_has_prefix(entry, "sequence_"))
+            continue;
+
+        gchar *full_path = g_build_filename(seq_dir, entry, NULL);
+
+        if (g_file_test(full_path, G_FILE_TEST_IS_DIR)) {
+            GtkWidget *sequence_widget = create_sequence_widget_css(full_path);
+            if (sequence_widget) {  // Should never be NULL now, but safe
+                gtk_box_pack_start(GTK_BOX(sequences_box), sequence_widget, TRUE, TRUE, 2);
+                count++;
+            }
         }
+
+        g_free(full_path);
+    }
+    g_dir_close(dir);
+
+    if (count == 0) {
+        GtkWidget *empty_label = gtk_label_new("(No sequence added)");
+        gtk_widget_set_name(empty_label, "no-sequence-label");
+        gtk_widget_set_hexpand(empty_label, TRUE);
+        gtk_widget_set_vexpand(empty_label, TRUE);
+        gtk_widget_set_halign(empty_label, GTK_ALIGN_CENTER);
+        gtk_widget_set_valign(empty_label, GTK_ALIGN_CENTER);
+        gtk_box_pack_start(GTK_BOX(sequences_box), empty_label, TRUE, TRUE, 0);
     }
 
     gtk_widget_show_all(sequences_box);
-
-    return G_SOURCE_REMOVE; // run once
+    return G_SOURCE_REMOVE;
 }
 
 
@@ -119,37 +154,140 @@ gboolean on_bar_clicked(GtkWidget *widget, GdkEventButton *event, gpointer user_
     return TRUE;
 }
 
-// Create a CSS-styled sequence widget
+// Create a CSS-styled sequence widget with delete button (mirrors layer component)
 GtkWidget* create_sequence_widget_css(const char *sequence_folder) {
-    gchar *frame_path = g_build_filename(sequence_folder, "mixed_frames/frame_00001.png", NULL);
 
-    if (!g_file_test(frame_path, G_FILE_TEST_IS_REGULAR)) {
-        g_free(frame_path);
-        return gtk_label_new("Sequence");
-    }
+	if (!g_file_test(sequence_folder, G_FILE_TEST_IS_DIR)) {
+		    return NULL;
+		}
+
+    GtkWidget *overlay = gtk_overlay_new();
 
     GtkWidget *event_box = gtk_event_box_new();
     gtk_widget_set_hexpand(event_box, TRUE);
     gtk_widget_set_vexpand(event_box, TRUE);
     gtk_widget_set_name(event_box, "sequence-preview-css");
 
-    GtkCssProvider *provider = gtk_css_provider_new();
-    gchar *css = g_strdup_printf(
-        "#sequence-preview-css {"
-        "background-image: url('%s');"
-        "background-repeat: repeat;"
-        "background-size: contain;"
-        "}", frame_path);
-    gtk_css_provider_load_from_data(provider, css, -1, NULL);
-    g_free(css);
+    gchar *frame_path = g_build_filename(sequence_folder, "mixed_frames/frame_00001.png", NULL);
 
-    GtkStyleContext *context = gtk_widget_get_style_context(event_box);
-    gtk_style_context_add_provider(context, GTK_STYLE_PROVIDER(provider),
-                                   GTK_STYLE_PROVIDER_PRIORITY_USER);
-    g_object_unref(provider);
+    if (g_file_test(frame_path, G_FILE_TEST_IS_REGULAR)) {
+        GtkCssProvider *provider = gtk_css_provider_new();
+        gchar *css = g_strdup_printf(
+            "#sequence-preview-css {"
+            "background-image: url('%s');"
+            "background-repeat: repeat;"
+            "background-size: contain;"
+            "}", frame_path);
+
+        gtk_css_provider_load_from_data(provider, css, -1, NULL);
+        g_free(css);
+
+        GtkStyleContext *context = gtk_widget_get_style_context(event_box);
+        gtk_style_context_add_provider(context, GTK_STYLE_PROVIDER(provider),
+                                       GTK_STYLE_PROVIDER_PRIORITY_USER);
+        g_object_unref(provider);
+    } else {
+        GtkWidget *fallback_label = gtk_label_new("Sequence");
+        gtk_container_add(GTK_CONTAINER(event_box), fallback_label);
+    }
+
     g_free(frame_path);
 
-    return event_box;
+    gtk_container_add(GTK_CONTAINER(overlay), event_box);
+
+    GtkWidget *delete_label = gtk_label_new("x");
+    gtk_widget_set_name(delete_label, "layer-delete-btn");  // reuse your existing style!
+    gtk_label_set_xalign(GTK_LABEL(delete_label), 0.5);
+    gtk_label_set_yalign(GTK_LABEL(delete_label), 0.5);
+
+    GtkWidget *delete_btn_container = gtk_event_box_new();
+    gtk_container_add(GTK_CONTAINER(delete_btn_container), delete_label);
+    gtk_widget_set_size_request(delete_btn_container, 16, 16);
+    gtk_widget_set_halign(delete_btn_container, GTK_ALIGN_END);
+    gtk_widget_set_valign(delete_btn_container, GTK_ALIGN_START);
+
+    gtk_overlay_add_overlay(GTK_OVERLAY(overlay), delete_btn_container);
+
+	// Index Extraction
+    int seq_index = -1;
+    const char *basename = strrchr(sequence_folder, '/');
+    if (basename && g_str_has_prefix(basename + 1, "sequence_")) {
+        seq_index = atoi(basename + 10) - 1;  // +10 skips "sequence_"
+    }
+
+    if (seq_index < 0) {
+        g_warning("Invalid sequence folder name (no index): %s", sequence_folder);
+        gtk_widget_hide(delete_btn_container);
+    } else {
+        g_signal_connect(delete_btn_container, "button-press-event",
+                         G_CALLBACK(on_sequence_delete_click),
+                         GINT_TO_POINTER(seq_index));
+    }
+
+    return overlay;
+}
+
+// Delete one sequence — FINAL VERSION
+gboolean on_sequence_delete_click(GtkWidget *widget,
+                                  GdkEventButton *event,
+                                  gpointer user_data)
+{
+    (void)widget;
+    (void)event;
+
+    int seq_index = GPOINTER_TO_UINT(user_data);
+
+    if (seq_index < 0) {
+        add_main_log("[ERROR] Invalid sequence index in delete click");
+        return TRUE;
+    }
+
+    add_main_log(g_strdup_printf("[UI] Deleting sequence %d...", seq_index + 1));
+
+    // Build full path: sequences/sequence_X
+    const AppPaths *paths = get_app_paths();
+    gchar *seq_folder = g_build_filename(paths->sequences_dir,
+                                         g_strdup_printf("sequence_%d", seq_index + 1),
+                                         NULL);
+
+    gboolean fully_deleted = FALSE;
+
+    if (g_file_test(seq_folder, G_FILE_TEST_IS_DIR)) {
+        // 1. Delete everything INSIDE the folder
+        if (delete_dir_recursive(seq_folder)) {
+            add_main_log(g_strdup_printf("[INFO] Deleted contents of: %s", seq_folder));
+
+            // 2. NOW delete the empty folder itself
+            if (rmdir(seq_folder) == 0) {
+                add_main_log(g_strdup_printf("[INFO] Removed empty folder: %s", seq_folder));
+                fully_deleted = TRUE;
+            } else {
+                add_main_log(g_strdup_printf("[WARN] Contents deleted but could not remove folder (not empty?): %s", seq_folder));
+            }
+        } else {
+            add_main_log(g_strdup_printf("[WARN] Failed to delete contents of: %s", seq_folder));
+        }
+    } else {
+        add_main_log("[INFO] Sequence folder already gone");
+        fully_deleted = TRUE;
+    }
+
+    g_free(seq_folder);
+
+    // Reload textures from remaining sequences
+    update_sequence_texture();
+
+    // Rebuild sequencer UI (now sees one less sequence)
+    update_sequencer();
+
+    // Resume playback (or use PAUSE if you prefer to stop)
+    sdl_set_render_state(RENDER_STATE_PLAY);
+
+    add_main_log(g_strdup_printf("[UI] Sequence %d %s deleted", 
+                                 seq_index + 1, 
+                                 fully_deleted ? "fully" : "partially"));
+
+    return TRUE;
 }
 
 // Get sequence widget width
@@ -379,7 +517,7 @@ GtkWidget *create_sequencer_component(void) {
     return sequencer_container;
 }
 
-static gboolean delete_dir_recursive(const char *path)
+gboolean delete_dir_recursive(const char *path)
 {
     GDir *dir = g_dir_open(path, 0, NULL);
     if (!dir)
@@ -404,7 +542,7 @@ static gboolean delete_dir_recursive(const char *path)
 }
 
 // Clear button clicked
-static void on_clear_all_clicked(GtkButton *button, gpointer user_data)
+void on_clear_all_clicked(GtkButton *button, gpointer user_data)
 {
     (void)button;
     (void)user_data;

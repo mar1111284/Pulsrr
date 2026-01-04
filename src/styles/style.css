@@ -323,3 +323,26 @@ textview text {
     color: #33FF33;
 }
 
+/* Base style for both mode buttons */
+#btn-live,
+#btn-playback {
+    font-size: 11px;
+    font-weight: normal;        /* default: normal */
+    border: none;
+    font-family: monospace;
+}
+
+/* Active state: bold + highlighted background */
+#btn-live.active,
+#btn-playback.active {
+    font-weight: bold;           /* ← This makes the text bold */
+    color: white;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
+
+/* Optional: Hover effect for inactive buttons */
+#btn-live:hover,
+#btn-playback:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+

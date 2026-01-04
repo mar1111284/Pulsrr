@@ -59,7 +59,7 @@ GtkWidget* create_layer_component(guint8 layer_index) {
 	gtk_widget_set_size_request(preview_box, 130, -1);
 	gtk_box_pack_start(GTK_BOX(layer_hbox), preview_box, FALSE, FALSE, 6);
 
-	if (layer_index >= 0 && layer_index <= MAX_LAYERS) {
+	if (layer_index <= MAX_LAYERS) {
 		layer_preview_boxes[layer_index] = preview_box;
 	}
 
@@ -158,8 +158,7 @@ void set_preview_thumbnail(guint8 layer_index)
             "  background-image: url('%s');"
             "  background-repeat: no-repeat;"
             "  background-position: center;"
-            "  background-size: contain;"
-            "  background-color: black;"
+            "  background-size: cover;"
             "}",
             css_id,
             uri

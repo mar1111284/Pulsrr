@@ -28,7 +28,8 @@ static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer use
 
 // Main entry point
 int main(int argc, char *argv[]) {
-
+	
+	srand((unsigned)time(NULL));
     gtk_init(&argc, &argv);
  	init_app_paths(argv[0]);
     AppContext ctx = {0};

@@ -2,6 +2,24 @@
 #include "../sdl/sdl.h"
 #include "utils.h"
 
+// Get current screen mode
+ScreenMode sdl_get_screen_mode(void)
+{
+    return g_sdl.screen_mode;
+}
+
+// Set screen mode and update UI if needed
+void sdl_set_screen_mode(ScreenMode mode)
+{
+    if (g_sdl.screen_mode == mode) {
+        return; // No change
+    }
+
+    g_sdl.screen_mode = mode;
+    add_main_log(g_strdup_printf("[SDL] Screen mode changed to: %s",
+                                 mode == LIVE_MODE ? "LIVE" : "PLAYBACK"));
+}
+
 // Layer
 void sdl_set_layer_state(guint8 layer_index, LayerState new_state)
 {
